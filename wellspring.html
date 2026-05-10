@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Wellspring - Pharmacy & Emergency Finder</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; overflow: hidden; }
+
+        /* ===== PRIVACY POLICY MODAL ===== */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.75); z-index: 10000;
+            display: flex; align-items: center; justify-content: center;
+            padding: 20px;
+        }
+        .modal-box {
+            background: white; border-radius: 16px; max-width: 520px; width: 100%;
+            max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: modalSlide 0.3s ease;
+        }
+        @keyframes modalSlide {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .modal-header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white; padding: 24px; text-align: center;
+            border-radius: 16px 16px 0 0;
+        }
+        .modal-header h2 { font-size: 1.5em; margin-bottom: 6px; }
+        .modal-header p { font-size: 0.9em; opacity: 0.9; }
+        .modal-body { padding: 24px; }
+        .modal-body h3 {
+            color: #333; font-size: 1.05em; margin: 20px 0 10px 0;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .modal-body h3:first-child { margin-top: 0; }
+        .modal-body p {
+            color: #555; font-size: 0.92em; line-height: 1.7;
+            margin-bottom: 12px;
+        }
+        .modal-body .icon { font-size: 1.3em; }
+        .modal-footer {
+            padding: 0 24px 24px; display: flex; gap: 12px;
+        }
+        .modal-btn {
+            flex: 1; padding: 14px; border: none; border-radius: 10px;
+            font-size: 1em; font-weight: 600; cursor: pointer; transition: all 0.2s;
+        }
+        .modal-btn.agree {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+        .modal-btn.agree:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(102,126,234,0.4); }
+        .modal-btn.exit {
+            background: #f0f0f0; color: #666;
+        }
+        .modal-btn.exit:hover { background: #e0e0e0; }
+
+        /* ===== MAIN APP ===== */
+        .app { display: flex; height: 100vh; width: 100vw; }
+        #map { flex: 1; height: 100%; background: #ddd; z-index: 1; }
+
+        .sidebar {
+            width: 380px; height: 100%; background: white;
+            display: flex; flex-direction: column;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.1);
+            z-index: 2;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white; padding: 16px; text-align: center; flex-shrink: 0;
+        }
+        .header h1 { font-size: 1.4em; margin-bottom: 2px; }
+        .header p { font-size: 0.8em; opacity: 0.9; }
+
+        .controls { padding: 10px; border-bottom: 1px solid #eee; background: #fafafa; flex-shrink: 0; }
+        .btn {
+            width: 100%; padding: 10px; border: none; border-radius: 8px;
+            background: #667eea; color: white; font-size: 0.95em; font-weight: 600;
+            cursor: pointer; margin-bottom: 6px; transition: background 0.2s;
+        }
+        .btn:hover { background: #5a6fd6; }
+        .btn:disabled { background: #ccc; cursor: not-allowed; }
+        .btn-secondary { background: #48bb78; }
+        .btn-secondary:hover { background: #38a169; }
+
+        .filters { display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; }
+        .filters select { padding: 4px 6px; border-radius: 5px; border: 1px solid #ccc; font-size: 0.9em; }
+
+        .mode-indicator {
+            text-align: center; font-size: 0.75em; padding: 5px;
+            background: #e3f2fd; color: #1565c0; font-weight: 500; flex-shrink: 0;
+        }
+
+        /* ===== EMERGENCY PANEL ===== */
+        .emergency-panel {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a5a);
+            color: white; padding: 10px; flex-shrink: 0;
+            border-bottom: 2px solid #ddd;
+        }
+        .emergency-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 8px;
+        }
+        .emergency-header h3 { font-size: 0.85em; display: flex; align-items: center; gap: 6px; }
+        .emergency-toggle {
+            background: rgba(255,255,255,0.25); border: none; color: white;
+            padding: 4px 10px; border-radius: 12px; font-size: 0.75em;
+            cursor: pointer; font-weight: 600;
+        }
+        .emergency-toggle:hover { background: rgba(255,255,255,0.35); }
+
+        .emergency-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+        }
+        .emergency-item {
+            background: rgba(255,255,255,0.2); border-radius: 6px;
+            padding: 6px 4px; text-align: center; font-size: 0.75em;
+        }
+        .emergency-item .num { font-size: 1.3em; font-weight: bold; display: block; }
+        .emergency-item .label { opacity: 0.9; font-size: 0.85em; }
+        .emergency-item a { color: white; text-decoration: none; display: block; }
+        .emergency-item a:active { background: rgba(255,255,255,0.3); border-radius: 4px; }
+
+        /* Emergency slider for mobile */
+        .emergency-slider {
+            display: flex; overflow-x: auto; gap: 8px; padding: 4px 0;
+            scrollbar-width: none; -ms-overflow-style: none;
+        }
+        .emergency-slider::-webkit-scrollbar { display: none; }
+        .emergency-slide {
+            flex: 0 0 auto; background: rgba(255,255,255,0.2);
+            border-radius: 10px; padding: 10px 14px; text-align: center;
+            min-width: 90px;
+        }
+        .emergency-slide .num { font-size: 1.4em; font-weight: bold; display: block; }
+        .emergency-slide .label { font-size: 0.8em; opacity: 0.9; }
+        .emergency-slide a { color: white; text-decoration: none; }
+
+        .status {
+            padding: 8px 12px; text-align: center; font-size: 0.82em;
+            font-weight: 500; min-height: 34px;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+        .status.info { background: #e3f2fd; color: #1565c0; }
+        .status.loading { background: #fff3cd; color: #856404; }
+        .status.success { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+
+        .results { flex: 1; overflow-y: auto; padding: 8px; min-height: 0; }
+
+        .card {
+            background: #f8f9fa; border-radius: 8px; padding: 10px;
+            margin-bottom: 8px; border-left: 4px solid #ccc;
+            cursor: pointer; transition: all 0.15s;
+        }
+        .card:hover { transform: translateX(3px); box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        .card.open { border-left-color: #28a745; background: #f0fff4; }
+        .card.closed { border-left-color: #dc3545; background: #fff5f5; }
+        .card.unknown { border-left-color: #fd7e14; background: #fffaf0; }
+
+        .badge {
+            display: inline-block; padding: 2px 7px; border-radius: 10px;
+            font-size: 0.65em; font-weight: bold; color: white; margin-bottom: 4px;
+        }
+        .badge.open { background: #28a745; }
+        .badge.closed { background: #dc3545; }
+        .badge.unknown { background: #fd7e14; }
+
+        .card h4 { font-size: 0.9em; margin-bottom: 3px; color: #333; }
+        .card p { font-size: 0.78em; color: #555; margin: 1px 0; line-height: 1.3; }
+        .card .dist { color: #667eea; font-weight: 600; }
+        .card .hours { font-family: monospace; font-size: 0.72em; color: #777; margin-top: 3px; }
+
+        .empty { text-align: center; color: #999; padding: 30px 15px; font-size: 0.85em; }
+
+        .legend {
+            padding: 6px 12px; font-size: 0.7em; color: #666;
+            border-top: 1px solid #eee; background: #fafafa;
+            display: flex; gap: 10px; justify-content: center; flex-shrink: 0;
+        }
+        .legend span { display: flex; align-items: center; gap: 3px; }
+        .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+        .dot.open { background: #28a745; }
+        .dot.closed { background: #dc3545; }
+        .dot.unknown { background: #fd7e14; }
+
+        /* ===== MOBILE: MAP ON TOP, SIDEBAR BOTTOM ===== */
+        @media (max-width: 768px) {
+            .app { flex-direction: column; }
+            #map { height: 35vh; width: 100%; flex: none; }
+            .sidebar { width: 100%; height: 65vh; }
+
+            .header { padding: 10px; }
+            .header h1 { font-size: 1.1em; }
+
+            .controls { padding: 8px; }
+            .btn { padding: 8px; font-size: 0.9em; margin-bottom: 5px; }
+
+            .emergency-panel { padding: 8px; }
+            .emergency-grid { display: none; } /* Hide grid on mobile */
+            .emergency-slider { display: flex; } /* Show slider instead */
+
+            .results { padding: 6px; }
+            .card { padding: 8px; margin-bottom: 6px; }
+            .card h4 { font-size: 0.85em; }
+            .card p { font-size: 0.75em; }
+
+            .legend { padding: 5px; font-size: 0.65em; }
+
+            .modal-box { max-height: 90vh; border-radius: 12px; }
+            .modal-header { padding: 18px; }
+            .modal-header h2 { font-size: 1.2em; }
+            .modal-body { padding: 18px; }
+            .modal-body p { font-size: 0.88em; }
+            .modal-footer { padding: 0 18px 18px; }
+            .modal-btn { padding: 12px; font-size: 0.95em; }
+        }
+
+        /* Desktop: hide slider, show grid */
+        @media (min-width: 769px) {
+            .emergency-slider { display: none !important; }
+        }
+
+        /* Landscape mobile */
+        @media (max-width: 768px) and (orientation: landscape) {
+            .app { flex-direction: row; }
+            #map { height: 100vh; width: 50%; }
+            .sidebar { width: 50%; height: 100vh; }
+            .emergency-grid { display: grid !important; }
+            .emergency-slider { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- PRIVACY POLICY MODAL -->
+<div class="modal-overlay" id="privacyModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h2>Welcome to Wellspring</h2>
+            <p>Please review our terms before proceeding</p>
+        </div>
+        <div class="modal-body">
+            <h3><span class="icon">ℹ️</span> Informational Purpose Only</h3>
+            <p>Wellspring is provided solely for informational and reference purposes. The data displayed, including pharmacy locations, operating hours, and emergency contact numbers, is sourced from publicly available databases and may not reflect real-time changes. We do not guarantee the accuracy, completeness, or timeliness of any information presented on this platform.</p>
+
+            <h3><span class="icon">📞</span> Verify Before Travelling</h3>
+            <p>We strongly recommend that you contact your chosen pharmacy directly by telephone before making any journey. Operating hours, availability of specific medications, and service provisions may change without notice. Wellspring accepts no liability for any inconvenience, loss, or damage arising from reliance on the information provided herein.</p>
+
+            <h3><span class="icon">🌍</span> Emergency Numbers Coverage</h3>
+            <p>Our emergency number database covers a wide range of countries and territories; however, it may not include every nation worldwide. Emergency services numbers are subject to change by local authorities. In a genuine emergency, always attempt to dial the universal emergency number <strong>112</strong> (where available) or consult local guidance.</p>
+
+            <p style="margin-top: 20px; font-size: 0.85em; color: #888; text-align: center;">By clicking "Agree & Enter," you acknowledge that you have read, understood, and accepted the above terms.</p>
+        </div>
+        <div class="modal-footer">
+            <button class="modal-btn exit" id="exitBtn">❌ Exit</button>
+            <button class="modal-btn agree" id="agreeBtn">✅ Agree & Enter</button>
+        </div>
+    </div>
+</div>
+
+<!-- MAIN APP -->
+<div class="app" id="mainApp" style="display:none;">
+    <div id="map"></div>
+
+    <div class="sidebar">
+        <div class="header">
+            <h1>💊 Wellspring</h1>
+            <p>Pharmacy & Emergency Finder</p>
+        </div>
+
+        <div class="controls">
+            <button class="btn" id="locateBtn">📍 Find Near Me</button>
+            <button class="btn btn-secondary" id="showAllBtn">🗺️ Show All in Map View</button>
+            <div class="filters">
+                <label><input type="checkbox" id="openOnly" checked> Open only</label>
+                <select id="radius">
+                    <option value="1000">1 km</option>
+                    <option value="2000" selected>2 km</option>
+                    <option value="5000">5 km</option>
+                    <option value="10000">10 km</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="mode-indicator" id="modeIndicator">Mode: Search near my location</div>
+
+        <!-- Emergency Numbers Panel -->
+        <div class="emergency-panel" id="emergencyPanel" style="display:none;">
+            <div class="emergency-header">
+                <h3>🚨 Emergency Numbers</h3>
+                <button class="emergency-toggle" id="emergencyToggle">Hide</button>
+            </div>
+            <!-- Desktop: Grid -->
+            <div class="emergency-grid" id="emergencyGrid"></div>
+            <!-- Mobile: Horizontal Slider -->
+            <div class="emergency-slider" id="emergencySlider"></div>
+        </div>
+
+        <div class="status info" id="status">Click a button above to start</div>
+
+        <div class="results" id="results">
+            <div class="empty">No results yet. Click a button above or pan the map and click "Show All in Map View".</div>
+        </div>
+
+        <div class="legend">
+            <span><span class="dot open"></span> Open</span>
+            <span><span class="dot closed"></span> Closed</span>
+            <span><span class="dot unknown"></span> No data</span>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // ====== PRIVACY MODAL ======
+    const privacyModal = document.getElementById('privacyModal');
+    const mainApp = document.getElementById('mainApp');
+
+    document.getElementById('agreeBtn').addEventListener('click', () => {
+        privacyModal.style.display = 'none';
+        mainApp.style.display = 'flex';
+        // Initialize map after showing
+        setTimeout(() => map.invalidateSize(), 100);
+    });
+
+    document.getElementById('exitBtn').addEventListener('click', () => {
+        window.close();
+        // Fallback if window.close() doesn't work
+        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#666;"><h2>Goodbye. You may close this tab.</h2></div>';
+    });
+
+    // ====== EMERGENCY NUMBERS DATABASE ======
+    const EMERGENCY_NUMBERS = {
+        "AT": { country: "Austria", police: "133", ambulance: "144", fire: "122", emergency: "112" },
+        "BE": { country: "Belgium", police: "101", ambulance: "112", fire: "112", emergency: "112" },
+        "BG": { country: "Bulgaria", police: "166", ambulance: "150", fire: "160", emergency: "112" },
+        "HR": { country: "Croatia", police: "192", ambulance: "194", fire: "193", emergency: "112" },
+        "CY": { country: "Cyprus", police: "199", ambulance: "199", fire: "199", emergency: "112" },
+        "CZ": { country: "Czech Republic", police: "158", ambulance: "155", fire: "150", emergency: "112" },
+        "DK": { country: "Denmark", police: "114", ambulance: "112", fire: "112", emergency: "112" },
+        "EE": { country: "Estonia", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "FI": { country: "Finland", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "FR": { country: "France", police: "17", ambulance: "15", fire: "18", emergency: "112" },
+        "DE": { country: "Germany", police: "110", ambulance: "112", fire: "112", emergency: "112" },
+        "GR": { country: "Greece", police: "100", ambulance: "166", fire: "199", emergency: "112" },
+        "HU": { country: "Hungary", police: "107", ambulance: "104", fire: "105", emergency: "112" },
+        "IS": { country: "Iceland", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "IE": { country: "Ireland", police: "999", ambulance: "999", fire: "999", emergency: "112" },
+        "IT": { country: "Italy", police: "113", ambulance: "118", fire: "115", emergency: "112" },
+        "LV": { country: "Latvia", police: "110", ambulance: "113", fire: "114", emergency: "112" },
+        "LT": { country: "Lithuania", police: "102", ambulance: "103", fire: "101", emergency: "112" },
+        "LU": { country: "Luxembourg", police: "113", ambulance: "112", fire: "112", emergency: "112" },
+        "MT": { country: "Malta", police: "191", ambulance: "196", fire: "199", emergency: "112" },
+        "NL": { country: "Netherlands", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "NO": { country: "Norway", police: "112", ambulance: "113", fire: "110", emergency: "112" },
+        "PL": { country: "Poland", police: "997", ambulance: "999", fire: "998", emergency: "112" },
+        "PT": { country: "Portugal", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "RO": { country: "Romania", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "SK": { country: "Slovakia", police: "158", ambulance: "155", fire: "150", emergency: "112" },
+        "SI": { country: "Slovenia", police: "113", ambulance: "112", fire: "112", emergency: "112" },
+        "ES": { country: "Spain", police: "091", ambulance: "061", fire: "080", emergency: "112" },
+        "SE": { country: "Sweden", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "CH": { country: "Switzerland", police: "117", ambulance: "144", fire: "118", emergency: "112" },
+        "GB": { country: "United Kingdom", police: "999", ambulance: "999", fire: "999", emergency: "112" },
+        "UK": { country: "United Kingdom", police: "999", ambulance: "999", fire: "999", emergency: "112" },
+        "US": { country: "United States", police: "911", ambulance: "911", fire: "911", emergency: "911" },
+        "CA": { country: "Canada", police: "911", ambulance: "911", fire: "911", emergency: "911" },
+        "MX": { country: "Mexico", police: "911", ambulance: "911", fire: "911", emergency: "911" },
+        "BR": { country: "Brazil", police: "190", ambulance: "192", fire: "193", emergency: "911" },
+        "AR": { country: "Argentina", police: "911", ambulance: "911", fire: "911", emergency: "911" },
+        "CL": { country: "Chile", police: "133", ambulance: "131", fire: "132", emergency: "911" },
+        "CO": { country: "Colombia", police: "123", ambulance: "123", fire: "123", emergency: "123" },
+        "PE": { country: "Peru", police: "105", ambulance: "116", fire: "116", emergency: "911" },
+        "VE": { country: "Venezuela", police: "911", ambulance: "911", fire: "911", emergency: "911" },
+        "CN": { country: "China", police: "110", ambulance: "120", fire: "119", emergency: "112" },
+        "JP": { country: "Japan", police: "110", ambulance: "119", fire: "119", emergency: "911" },
+        "KR": { country: "South Korea", police: "112", ambulance: "119", fire: "119", emergency: "112" },
+        "IN": { country: "India", police: "100", ambulance: "102", fire: "101", emergency: "112" },
+        "ID": { country: "Indonesia", police: "110", ambulance: "118", fire: "113", emergency: "112" },
+        "TH": { country: "Thailand", police: "191", ambulance: "1669", fire: "199", emergency: "911" },
+        "VN": { country: "Vietnam", police: "113", ambulance: "115", fire: "114", emergency: "112" },
+        "MY": { country: "Malaysia", police: "999", ambulance: "999", fire: "999", emergency: "999" },
+        "PH": { country: "Philippines", police: "117", ambulance: "117", fire: "117", emergency: "911" },
+        "SG": { country: "Singapore", police: "999", ambulance: "995", fire: "995", emergency: "999" },
+        "TW": { country: "Taiwan", police: "110", ambulance: "119", fire: "119", emergency: "112" },
+        "HK": { country: "Hong Kong", police: "999", ambulance: "999", fire: "999", emergency: "999" },
+        "TR": { country: "Turkey", police: "155", ambulance: "112", fire: "110", emergency: "112" },
+        "AE": { country: "UAE", police: "999", ambulance: "998", fire: "997", emergency: "999" },
+        "SA": { country: "Saudi Arabia", police: "999", ambulance: "997", fire: "998", emergency: "999" },
+        "IL": { country: "Israel", police: "100", ambulance: "101", fire: "102", emergency: "112" },
+        "AU": { country: "Australia", police: "000", ambulance: "000", fire: "000", emergency: "000" },
+        "NZ": { country: "New Zealand", police: "111", ambulance: "111", fire: "111", emergency: "111" },
+        "ZA": { country: "South Africa", police: "10111", ambulance: "10177", fire: "10177", emergency: "112" },
+        "EG": { country: "Egypt", police: "122", ambulance: "123", fire: "180", emergency: "112" },
+        "NG": { country: "Nigeria", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "KE": { country: "Kenya", police: "999", ambulance: "999", fire: "999", emergency: "999" },
+        "MA": { country: "Morocco", police: "19", ambulance: "15", fire: "15", emergency: "112" },
+        "RU": { country: "Russia", police: "102", ambulance: "103", fire: "101", emergency: "112" },
+        "UA": { country: "Ukraine", police: "102", ambulance: "103", fire: "101", emergency: "112" },
+        "BY": { country: "Belarus", police: "102", ambulance: "103", fire: "101", emergency: "112" },
+    };
+
+    // ====== MAP ======
+    const map = L.map('map').setView([51.505, -0.09], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19, attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    let userLoc = null;
+    let markers = [];
+    let currentMode = 'location';
+    let currentCountry = null;
+    let emergencyVisible = true;
+    const statusEl = document.getElementById('status');
+    const resultsEl = document.getElementById('results');
+    const btn = document.getElementById('locateBtn');
+    const showAllBtn = document.getElementById('showAllBtn');
+    const modeIndicator = document.getElementById('modeIndicator');
+    const emergencyPanel = document.getElementById('emergencyPanel');
+    const emergencyGrid = document.getElementById('emergencyGrid');
+    const emergencySlider = document.getElementById('emergencySlider');
+    const emergencyToggle = document.getElementById('emergencyToggle');
+
+    function setStatus(msg, type) {
+        statusEl.textContent = msg;
+        statusEl.className = 'status ' + type;
+    }
+
+    function clearMarkers() {
+        markers.forEach(m => map.removeLayer(m));
+        markers = [];
+    }
+
+    function getDist(lat1, lon1, lat2, lon2) {
+        const R = 6371;
+        const d = (a) => a * Math.PI / 180;
+        const a = Math.sin(d(lat2-lat1)/2)**2 + Math.cos(d(lat1))*Math.cos(d(lat2))*Math.sin(d(lon2-lon1)/2)**2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    // ====== EMERGENCY TOGGLE ======
+    emergencyToggle.addEventListener('click', () => {
+        emergencyVisible = !emergencyVisible;
+        emergencyGrid.style.display = emergencyVisible ? 'grid' : 'none';
+        emergencySlider.style.display = emergencyVisible ? 'flex' : 'none';
+        emergencyToggle.textContent = emergencyVisible ? 'Hide' : 'Show';
+    });
+
+    // ====== COUNTRY DETECTION ======
+    async function detectCountry(lat, lng) {
+        try {
+            const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`);
+            const data = await res.json();
+            return data.countryCode || null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function showEmergencyNumbers(countryCode) {
+        const info = EMERGENCY_NUMBERS[countryCode.toUpperCase()];
+        if (!info) {
+            emergencyPanel.style.display = 'none';
+            return;
+        }
+
+        currentCountry = info.country;
+        emergencyPanel.style.display = 'block';
+        emergencyVisible = true;
+        emergencyToggle.textContent = 'Hide';
+
+        // Desktop grid
+        emergencyGrid.innerHTML = `
+            <div class="emergency-item">
+                <a href="tel:${info.police}">
+                    <span class="num">${info.police}</span>
+                    <span class="label">🚔 Police</span>
+                </a>
+            </div>
+            <div class="emergency-item">
+                <a href="tel:${info.ambulance}">
+                    <span class="num">${info.ambulance}</span>
+                    <span class="label">🚑 Ambulance</span>
+                </a>
+            </div>
+            <div class="emergency-item">
+                <a href="tel:${info.fire}">
+                    <span class="num">${info.fire}</span>
+                    <span class="label">🚒 Fire</span>
+                </a>
+            </div>
+        `;
+
+        // Mobile slider
+        emergencySlider.innerHTML = `
+            <div class="emergency-slide">
+                <a href="tel:${info.police}">
+                    <span class="num">${info.police}</span>
+                    <span class="label">🚔 Police</span>
+                </a>
+            </div>
+            <div class="emergency-slide">
+                <a href="tel:${info.ambulance}">
+                    <span class="num">${info.ambulance}</span>
+                    <span class="label">🚑 Ambulance</span>
+                </a>
+            </div>
+            <div class="emergency-slide">
+                <a href="tel:${info.fire}">
+                    <span class="num">${info.fire}</span>
+                    <span class="label">🚒 Fire</span>
+                </a>
+            </div>
+            <div class="emergency-slide">
+                <a href="tel:${info.emergency}">
+                    <span class="num">${info.emergency}</span>
+                    <span class="label">🆘 Emergency</span>
+                </a>
+            </div>
+        `;
+
+        emergencyGrid.style.display = 'grid';
+        emergencySlider.style.display = 'flex';
+    }
+
+    // ====== OPENING HOURS PARSER ======
+    const DAY_NAMES = ['su', 'mo', 'tu', 'we', 'th', 'fr', 'sa'];
+
+    function dayIndex(name) { return DAY_NAMES.indexOf(name); }
+
+    function ruleAppliesToDay(rule, currentDay) {
+        if (!/(mo|tu|we|th|fr|sa|su)/.test(rule)) return true;
+
+        const rangeRegex = /(mo|tu|we|th|fr|sa|su)(?:-(mo|tu|we|th|fr|sa|su))?/g;
+        let match;
+        while ((match = rangeRegex.exec(rule)) !== null) {
+            const start = dayIndex(match[1]);
+            const end = match[2] ? dayIndex(match[2]) : start;
+            if (start === -1 || end === -1) continue;
+
+            if (start <= end) {
+                if (currentDay >= start && currentDay <= end) return true;
+            } else {
+                if (currentDay >= start || currentDay <= end) return true;
+            }
+        }
+        return false;
+    }
+
+    function extractTimeRanges(rule) {
+        const ranges = [];
+        const regex = /(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/g;
+        let m;
+        while ((m = regex.exec(rule)) !== null) {
+            const start = parseInt(m[1]) * 60 + parseInt(m[2]);
+            const end = parseInt(m[3]) * 60 + parseInt(m[4]);
+            if (!isNaN(start) && !isNaN(end)) ranges.push([start, end]);
+        }
+        return ranges;
+    }
+
+    function checkOpen(hoursStr) {
+        if (!hoursStr) return null;
+        const raw = hoursStr.trim();
+        if (raw === '24/7') return true;
+
+        const now = new Date();
+        const currentDay = now.getDay();
+        const currentTime = now.getHours() * 60 + now.getMinutes();
+
+        const rules = raw.split(/;\s*/);
+        let hasRuleForToday = false;
+
+        for (let rule of rules) {
+            rule = rule.trim().toLowerCase().replace(/\s+/g, ' ');
+            if (!rule) continue;
+
+            const applies = ruleAppliesToDay(rule, currentDay);
+            if (!applies) continue;
+
+            hasRuleForToday = true;
+
+            if (/\b(off|closed)\b/.test(rule)) {
+                return false;
+            }
+
+            const ranges = extractTimeRanges(rule);
+            for (let [start, end] of ranges) {
+                if (currentTime >= start && currentTime <= end) {
+                    return true;
+                }
+            }
+        }
+
+        if (hasRuleForToday) return false;
+        return null;
+    }
+
+    // ====== DISPLAY RESULTS ======
+    function displayPharmacies(list, centerPoint) {
+        const openOnly = document.getElementById('openOnly').checked;
+        const show = openOnly ? list.filter(p => p.isOpen === true) : list;
+
+        if (show.length === 0) {
+            setStatus(`Found ${list.length}, none open now.`, 'error');
+            resultsEl.innerHTML = '<div class="empty">No open pharmacies. Uncheck "Open only" to see all.</div>';
+            return;
+        }
+
+        resultsEl.innerHTML = '';
+
+        show.forEach((p, i) => {
+            const cls = p.isOpen === true ? 'open' : p.isOpen === false ? 'closed' : 'unknown';
+            const txt = p.isOpen === true ? 'OPEN NOW' : p.isOpen === false ? 'CLOSED' : 'HOURS UNKNOWN';
+            const col = p.isOpen === true ? '#28a745' : p.isOpen === false ? '#dc3545' : '#fd7e14';
+
+            const icon = L.divIcon({
+                html: `<div style="background:${col};width:28px;height:28px;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;font-size:12px;">${i+1}</div>`,
+                iconSize: [28, 28], iconAnchor: [14, 14]
+            });
+
+            const m = L.marker([p.lat, p.lon], {icon}).addTo(map);
+            m.bindPopup(`<b>${p.name}</b><br><span style="color:${col};font-weight:bold;">${txt}</span><br>${p.address}${p.phone ? '<br>📞 ' + p.phone : ''}${p.hours ? '<br>🕐 ' + p.hours : ''}`);
+            markers.push(m);
+
+            const card = document.createElement('div');
+            card.className = 'card ' + cls;
+
+            let distText = '';
+            if (centerPoint) {
+                const d = getDist(centerPoint.lat, centerPoint.lng, p.lat, p.lon);
+                distText = `<p class="dist">📍 ${d.toFixed(2)} km away</p>`;
+            }
+
+            card.innerHTML = `
+                <span class="badge ${cls}">${txt}</span>
+                <h4>${i+1}. ${p.name}</h4>
+                ${distText}
+                <p>${p.address}</p>
+                ${p.phone ? '<p>📞 ' + p.phone + '</p>' : ''}
+                ${p.hours ? '<p class="hours">🕐 ' + p.hours + '</p>' : ''}
+            `;
+            card.onclick = () => { map.setView([p.lat, p.lon], 17); m.openPopup(); };
+            resultsEl.appendChild(card);
+        });
+
+        setStatus(`Found ${show.length} pharmacy(s)`, 'success');
+        if (markers.length > 0) {
+            const group = L.featureGroup(markers);
+            map.fitBounds(group.getBounds().pad(0.1));
+        }
+    }
+
+    function processElements(elements, centerPoint) {
+        const list = [];
+
+        elements.forEach(el => {
+            let lat, lon, tags = el.tags || {};
+            if (el.type === 'node') { lat = el.lat; lon = el.lon; }
+            else if (el.center) { lat = el.center.lat; lon = el.center.lon; }
+            else return;
+
+            const isOpen = checkOpen(tags.opening_hours);
+            const addr = [tags['addr:street'], tags['addr:housenumber'], tags['addr:postcode'], tags['addr:city']]
+                .filter(Boolean).join(' ') || 'Address not available';
+
+            list.push({
+                name: tags.name || tags['name:en'] || 'Unnamed Pharmacy',
+                lat, lon, address: addr,
+                phone: tags.phone || tags['contact:phone'] || null,
+                hours: tags.opening_hours || null,
+                isOpen,
+                dist: centerPoint ? getDist(centerPoint.lat, centerPoint.lng, lat, lon) : 0
+            });
+        });
+
+        list.sort((a, b) => a.dist - b.dist);
+        return list;
+    }
+
+    // ====== SEARCH NEAR ME ======
+    async function searchNearMe() {
+        if (!userLoc) return;
+        const radius = parseInt(document.getElementById('radius').value);
+
+        setStatus('Searching pharmacies near you...', 'loading');
+        btn.disabled = true;
+        showAllBtn.disabled = true;
+
+        const countryCode = await detectCountry(userLoc.lat, userLoc.lng);
+        if (countryCode) showEmergencyNumbers(countryCode);
+
+        const query = `[out:json][timeout:25];
+(nwr["amenity"="pharmacy"](around:${radius},${userLoc.lat},${userLoc.lng});
+);out center tags;`;
+
+        try {
+            const res = await fetch('https://overpass-api.de/api/interpreter', {
+                method: 'POST',
+                body: query,
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+            });
+            const data = await res.json();
+
+            if (!data.elements || data.elements.length === 0) {
+                setStatus('No pharmacies found. Try a larger radius.', 'error');
+                resultsEl.innerHTML = '<div class="empty">No pharmacies found.</div>';
+                clearMarkers();
+                return;
+            }
+
+            clearMarkers();
+            const list = processElements(data.elements, userLoc);
+            displayPharmacies(list, userLoc);
+
+        } catch (err) {
+            console.error(err);
+            setStatus('Error loading data. Try again.', 'error');
+        }
+        btn.disabled = false;
+        showAllBtn.disabled = false;
+    }
+
+    // ====== SHOW ALL IN MAP VIEW ======
+    async function showAllInView() {
+        const bounds = map.getBounds();
+        const sw = bounds.getSouthWest();
+        const ne = bounds.getNorthEast();
+
+        const area = Math.abs(ne.lat - sw.lat) * Math.abs(ne.lng - sw.lng);
+        if (area > 5) {
+            setStatus('Map area too large. Zoom in closer.', 'error');
+            return;
+        }
+
+        setStatus('Loading all pharmacies in view...', 'loading');
+        btn.disabled = true;
+        showAllBtn.disabled = true;
+
+        const centerLat = (sw.lat + ne.lat) / 2;
+        const centerLng = (sw.lng + ne.lng) / 2;
+        const countryCode = await detectCountry(centerLat, centerLng);
+        if (countryCode) showEmergencyNumbers(countryCode);
+
+        const query = `[out:json][timeout:30];
+(nwr["amenity"="pharmacy"](${sw.lat},${sw.lng},${ne.lat},${ne.lng});
+);out center tags;`;
+
+        try {
+            const res = await fetch('https://overpass-api.de/api/interpreter', {
+                method: 'POST',
+                body: query,
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+            });
+            const data = await res.json();
+
+            if (!data.elements || data.elements.length === 0) {
+                setStatus('No pharmacies in this map area.', 'error');
+                resultsEl.innerHTML = '<div class="empty">No pharmacies visible on this part of the map. Try panning to a city.</div>';
+                clearMarkers();
+                return;
+            }
+
+            clearMarkers();
+            const list = processElements(data.elements, null);
+            list.sort((a, b) => a.name.localeCompare(b.name));
+
+            displayPharmacies(list, null);
+
+        } catch (err) {
+            console.error(err);
+            setStatus('Error loading data. The area may be too large.', 'error');
+        }
+        btn.disabled = false;
+        showAllBtn.disabled = false;
+    }
+
+    // ====== EVENTS ======
+    btn.addEventListener('click', () => {
+        if (!navigator.geolocation) {
+            setStatus('Geolocation not supported.', 'error');
+            return;
+        }
+        currentMode = 'location';
+        modeIndicator.textContent = 'Mode: Search near my location';
+        setStatus('Getting your location...', 'loading');
+        btn.disabled = true;
+
+        navigator.geolocation.getCurrentPosition(
+            pos => {
+                userLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                map.setView([userLoc.lat, userLoc.lng], 14);
+
+                L.circleMarker([userLoc.lat, userLoc.lng], {
+                    radius: 10, fillColor: '#667eea', color: 'white', weight: 3, fillOpacity: 1
+                }).addTo(map).bindPopup('You are here').openPopup();
+
+                searchNearMe();
+            },
+            err => {
+                setStatus('Location denied. Allow location in browser settings.', 'error');
+                btn.disabled = false;
+            },
+            { enableHighAccuracy: true, timeout: 15000 }
+        );
+    });
+
+    showAllBtn.addEventListener('click', () => {
+        currentMode = 'viewport';
+        modeIndicator.textContent = 'Mode: Show all in current map view';
+        showAllInView();
+    });
+
+    document.getElementById('openOnly').addEventListener('change', () => {
+        if (currentMode === 'location' && userLoc) searchNearMe();
+        else if (currentMode === 'viewport') showAllInView();
+    });
+
+    document.getElementById('radius').addEventListener('change', () => {
+        if (currentMode === 'location' && userLoc) searchNearMe();
+    });
+</script>
+
+</body>
+</html>
