@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Locpharma — Pharmacy & Emergency Finder</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root {
+            --navy: #0b1628;
+            --navy-mid: #152035;
+            --navy-light: #1e2f47;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --green: #10b981;
+            --red: #ef4444;
+            --amber: #f59e0b;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: rgba(255,255,255,0.07);
+            --card-bg: rgba(255,255,255,0.04);
+            --card-hover: rgba(255,255,255,0.07);
+            --white: #ffffff;
+            --sidebar-w: 360px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; font-family: 'DM Sans', sans-serif; overflow: hidden; background: var(--navy); }
+
+        /* =========================================
+           MODAL
+        ========================================= */
+        .modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(5, 10, 20, 0.92);
+            backdrop-filter: blur(8px);
+            z-index: 10000;
+            display: flex; align-items: center; justify-content: center;
+            padding: 20px;
+        }
+        .modal-box {
+            background: var(--navy-mid);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            max-width: 480px; width: 100%;
+            max-height: 88vh; overflow-y: auto;
+            box-shadow: 0 32px 80px rgba(0,0,0,0.6);
+            animation: modalIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes modalIn {
+            from { opacity: 0; transform: translateY(24px) scale(0.97); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .modal-header {
+            padding: 36px 32px 24px;
+            border-bottom: 1px solid var(--border);
+        }
+        .modal-logo {
+            display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+        }
+        .modal-logo-icon {
+            width: 42px; height: 42px;
+            background: var(--accent);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .modal-logo-icon svg { width: 22px; height: 22px; color: white; }
+        .modal-header h2 {
+            font-family: 'Syne', sans-serif;
+            font-size: 1.6em; font-weight: 700;
+            color: var(--text-primary);
+        }
+        .modal-header p {
+            color: var(--text-secondary);
+            font-size: 0.88em; margin-top: 6px;
+            line-height: 1.6;
+        }
+        .modal-body { padding: 24px 32px; }
+        .modal-section {
+            display: flex; gap: 14px; margin-bottom: 22px;
+            padding-bottom: 22px; border-bottom: 1px solid var(--border);
+        }
+        .modal-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .modal-section-icon {
+            flex-shrink: 0;
+            width: 36px; height: 36px;
+            background: rgba(59,130,246,0.12);
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            margin-top: 2px;
+        }
+        .modal-section-icon svg { width: 17px; height: 17px; color: var(--accent); }
+        .modal-section h3 {
+            font-size: 0.9em; font-weight: 600;
+            color: var(--text-primary); margin-bottom: 6px;
+        }
+        .modal-section p {
+            font-size: 0.84em; color: var(--text-secondary);
+            line-height: 1.65;
+        }
+        .modal-section strong { color: var(--text-primary); }
+        .modal-note {
+            margin: 0 32px 24px;
+            padding: 14px 16px;
+            background: rgba(59,130,246,0.08);
+            border: 1px solid rgba(59,130,246,0.2);
+            border-radius: 10px;
+            font-size: 0.8em; color: var(--text-secondary);
+            line-height: 1.6; text-align: center;
+        }
+        .modal-footer {
+            padding: 0 32px 32px;
+            display: flex; gap: 10px;
+        }
+        .modal-btn {
+            flex: 1; padding: 13px; border: none; border-radius: 10px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.92em; font-weight: 500; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .modal-btn.agree {
+            background: var(--accent); color: white;
+        }
+        .modal-btn.agree:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        .modal-btn.exit {
+            background: var(--navy-light);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+        .modal-btn.exit:hover { background: rgba(255,255,255,0.06); color: var(--text-primary); }
+
+        /* =========================================
+           APP LAYOUT
+        ========================================= */
+        .app { display: flex; height: 100vh; width: 100vw; }
+        #map { flex: 1; height: 100%; }
+
+        .sidebar {
+            width: var(--sidebar-w);
+            height: 100%;
+            background: var(--navy);
+            display: flex; flex-direction: column;
+            border-left: 1px solid var(--border);
+            z-index: 2;
+            overflow: hidden;
+        }
+
+        /* ---- Header ---- */
+        .header {
+            padding: 20px 20px 0;
+            flex-shrink: 0;
+        }
+        .header-top {
+            display: flex; align-items: center; gap: 10px; margin-bottom: 18px;
+        }
+        .header-icon {
+            width: 36px; height: 36px;
+            background: var(--accent);
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+        .header-icon svg { width: 18px; height: 18px; color: white; }
+        .header-wordmark {
+            font-family: 'Syne', sans-serif;
+            font-weight: 800; font-size: 1.2em;
+            color: var(--text-primary);
+            letter-spacing: -0.01em;
+        }
+        .header-wordmark span { color: var(--accent); }
+
+        /* ---- Controls ---- */
+        .controls { padding: 0 20px 16px; flex-shrink: 0; }
+        .btn {
+            width: 100%; padding: 11px 16px;
+            border: none; border-radius: 9px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.88em; font-weight: 500;
+            cursor: pointer; margin-bottom: 8px;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            transition: all 0.2s;
+        }
+        .btn svg { width: 15px; height: 15px; flex-shrink: 0; }
+        .btn-primary {
+            background: var(--accent); color: white;
+        }
+        .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        .btn-primary:disabled { background: var(--navy-light); color: var(--text-muted); cursor: not-allowed; transform: none; }
+        .btn-secondary {
+            background: var(--navy-light);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover { background: rgba(255,255,255,0.06); color: var(--text-primary); }
+        .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .filters {
+            display: flex; justify-content: space-between;
+            align-items: center; margin-top: 4px;
+        }
+        .filter-label {
+            display: flex; align-items: center; gap: 7px;
+            font-size: 0.82em; color: var(--text-secondary);
+            cursor: pointer; user-select: none;
+        }
+        .filter-label input[type="checkbox"] {
+            accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer;
+        }
+        .filter-select {
+            padding: 5px 8px;
+            background: var(--navy-light); color: var(--text-secondary);
+            border: 1px solid var(--border); border-radius: 7px;
+            font-family: 'DM Sans', sans-serif; font-size: 0.82em;
+            cursor: pointer; outline: none;
+        }
+        .filter-select:hover { border-color: var(--accent); }
+
+        /* ---- Mode indicator ---- */
+        .mode-indicator {
+            margin: 0 20px 0;
+            padding: 7px 12px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            font-size: 0.75em; color: var(--text-muted);
+            letter-spacing: 0.01em;
+            flex-shrink: 0;
+        }
+
+        /* ---- Emergency Panel ---- */
+        .emergency-panel {
+            margin: 10px 20px 0;
+            background: rgba(239,68,68,0.08);
+            border: 1px solid rgba(239,68,68,0.2);
+            border-radius: 12px; overflow: hidden;
+            flex-shrink: 0;
+        }
+        .emergency-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 14px;
+        }
+        .emergency-header h3 {
+            font-size: 0.8em; font-weight: 600;
+            color: #fca5a5;
+            display: flex; align-items: center; gap: 7px;
+            letter-spacing: 0.04em; text-transform: uppercase;
+        }
+        .emergency-header h3 svg { width: 13px; height: 13px; }
+        .emergency-toggle {
+            background: rgba(239,68,68,0.15);
+            border: 1px solid rgba(239,68,68,0.25);
+            color: #fca5a5;
+            padding: 3px 10px; border-radius: 20px;
+            font-size: 0.72em; font-family: 'DM Sans', sans-serif;
+            cursor: pointer; font-weight: 500;
+        }
+        .emergency-toggle:hover { background: rgba(239,68,68,0.25); }
+
+        .emergency-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            gap: 1px; background: rgba(239,68,68,0.1);
+            border-top: 1px solid rgba(239,68,68,0.15);
+        }
+        .emergency-item {
+            background: var(--navy); padding: 10px 6px;
+            text-align: center;
+        }
+        .emergency-item a { color: inherit; text-decoration: none; display: block; }
+        .emergency-item .num {
+            display: block; font-family: 'Syne', sans-serif;
+            font-size: 1.2em; font-weight: 700;
+            color: var(--text-primary);
+        }
+        .emergency-item .label {
+            display: block; font-size: 0.7em;
+            color: var(--text-muted); margin-top: 2px;
+            letter-spacing: 0.03em;
+        }
+
+        .emergency-slider {
+            display: flex; overflow-x: auto; gap: 1px;
+            scrollbar-width: none; -ms-overflow-style: none;
+            background: rgba(239,68,68,0.1);
+            border-top: 1px solid rgba(239,68,68,0.15);
+        }
+        .emergency-slider::-webkit-scrollbar { display: none; }
+        .emergency-slide {
+            flex: 0 0 auto; background: var(--navy);
+            padding: 10px 16px; text-align: center; min-width: 80px;
+        }
+        .emergency-slide a { color: inherit; text-decoration: none; display: block; }
+        .emergency-slide .num {
+            display: block; font-family: 'Syne', sans-serif;
+            font-size: 1.1em; font-weight: 700;
+            color: var(--text-primary);
+        }
+        .emergency-slide .label {
+            display: block; font-size: 0.68em;
+            color: var(--text-muted); margin-top: 2px;
+        }
+
+        /* ---- Status ---- */
+        .status {
+            margin: 10px 20px 0;
+            padding: 9px 14px;
+            border-radius: 8px;
+            font-size: 0.8em; font-weight: 500;
+            min-height: 36px;
+            display: flex; align-items: center; gap: 8px;
+            flex-shrink: 0;
+        }
+        .status svg { width: 14px; height: 14px; flex-shrink: 0; }
+        .status.info { background: rgba(59,130,246,0.1); color: #93c5fd; border: 1px solid rgba(59,130,246,0.2); }
+        .status.loading { background: rgba(245,158,11,0.1); color: #fcd34d; border: 1px solid rgba(245,158,11,0.2); }
+        .status.success { background: rgba(16,185,129,0.1); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.2); }
+        .status.error { background: rgba(239,68,68,0.1); color: #fca5a5; border: 1px solid rgba(239,68,68,0.2); }
+
+        /* ---- Results ---- */
+        .results { flex: 1; overflow-y: auto; padding: 10px 20px 20px; min-height: 0; }
+        .results::-webkit-scrollbar { width: 4px; }
+        .results::-webkit-scrollbar-track { background: transparent; }
+        .results::-webkit-scrollbar-thumb { background: var(--navy-light); border-radius: 4px; }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 10px; padding: 13px 14px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.18s;
+            position: relative;
+            overflow: hidden;
+        }
+        .card::before {
+            content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+            width: 3px;
+        }
+        .card.open::before { background: var(--green); }
+        .card.closed::before { background: var(--red); }
+        .card.unknown::before { background: var(--amber); }
+        .card:hover { background: var(--card-hover); transform: translateX(2px); border-color: rgba(255,255,255,0.12); }
+
+        .card-top {
+            display: flex; align-items: flex-start;
+            justify-content: space-between; gap: 8px; margin-bottom: 7px;
+        }
+        .card h4 {
+            font-size: 0.87em; font-weight: 500;
+            color: var(--text-primary); line-height: 1.3; flex: 1;
+        }
+        .badge {
+            flex-shrink: 0;
+            display: inline-block; padding: 2px 8px;
+            border-radius: 20px; font-size: 0.67em;
+            font-weight: 600; letter-spacing: 0.04em;
+        }
+        .badge.open { background: rgba(16,185,129,0.15); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.3); }
+        .badge.closed { background: rgba(239,68,68,0.12); color: #fca5a5; border: 1px solid rgba(239,68,68,0.25); }
+        .badge.unknown { background: rgba(245,158,11,0.12); color: #fcd34d; border: 1px solid rgba(245,158,11,0.25); }
+
+        .card-meta { display: flex; flex-direction: column; gap: 3px; }
+        .card-row {
+            display: flex; align-items: center; gap: 6px;
+            font-size: 0.77em; color: var(--text-muted);
+        }
+        .card-row svg { width: 11px; height: 11px; flex-shrink: 0; color: var(--text-muted); }
+        .card-row.dist { color: var(--accent); }
+        .card-row.dist svg { color: var(--accent); }
+        .card-row.hours { font-family: 'DM Sans', sans-serif; font-size: 0.73em; color: var(--text-muted); }
+
+        .empty {
+            text-align: center; color: var(--text-muted);
+            padding: 40px 20px; font-size: 0.83em; line-height: 1.7;
+        }
+        .empty-icon {
+            width: 44px; height: 44px;
+            background: var(--card-bg);
+            border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 14px;
+        }
+        .empty-icon svg { width: 22px; height: 22px; color: var(--text-muted); }
+
+        /* ---- Legend ---- */
+        .legend {
+            padding: 10px 20px;
+            border-top: 1px solid var(--border);
+            display: flex; gap: 14px; justify-content: center;
+            flex-shrink: 0; background: var(--navy);
+        }
+        .legend-item {
+            display: flex; align-items: center; gap: 5px;
+            font-size: 0.72em; color: var(--text-muted);
+        }
+        .dot { width: 6px; height: 6px; border-radius: 50%; }
+        .dot.open { background: var(--green); }
+        .dot.closed { background: var(--red); }
+        .dot.unknown { background: var(--amber); }
+
+        /* ---- Divider ---- */
+        .divider {
+            height: 1px; background: var(--border);
+            margin: 10px 0 0;
+        }
+
+        /* =========================================
+           MAP CUSTOMIZATIONS
+        ========================================= */
+        .leaflet-popup-content-wrapper {
+            background: var(--navy-mid) !important;
+            border: 1px solid var(--border) !important;
+            border-radius: 10px !important;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4) !important;
+            color: var(--text-primary) !important;
+            font-family: 'DM Sans', sans-serif !important;
+        }
+        .leaflet-popup-tip { background: var(--navy-mid) !important; }
+        .leaflet-popup-content { font-size: 13px !important; line-height: 1.5 !important; }
+        .leaflet-container { font-family: 'DM Sans', sans-serif !important; }
+
+        /* =========================================
+           MOBILE
+        ========================================= */
+        @media (max-width: 768px) {
+            .app { flex-direction: column; }
+            #map { height: 38vh; width: 100%; flex: none; }
+            .sidebar { width: 100%; height: 62vh; }
+            .header { padding: 12px 14px 0; }
+            .controls { padding: 0 14px 12px; }
+            .mode-indicator { margin: 0 14px; }
+            .emergency-panel { margin: 8px 14px 0; }
+            .status { margin: 8px 14px 0; }
+            .results { padding: 8px 14px 16px; }
+            .legend { padding: 8px 14px; }
+            .emergency-grid { display: none; }
+            .emergency-slider { display: flex; }
+        }
+
+        @media (min-width: 769px) {
+            .emergency-slider { display: none !important; }
+        }
+
+        @media (max-width: 768px) and (orientation: landscape) {
+            .app { flex-direction: row; }
+            #map { height: 100vh; width: 50%; }
+            .sidebar { width: 50%; height: 100vh; }
+            .emergency-grid { display: grid !important; }
+            .emergency-slider { display: none !important; }
+        }
+
+        /* Loading spinner */
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner {
+            width: 13px; height: 13px;
+            border: 2px solid currentColor;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+<body>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="privacyModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div class="modal-logo">
+                <div class="modal-logo-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h12a2 2 0 002-2v-2H10v2a2 2 0 01-2 2z"/><path d="M19 3H5a2 2 0 00-2 2v14h3V5a2 2 0 012-2z"/><path d="M14 8v4m-2-2h4"/></svg>
+                </div>
+                <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:1.2em;color:var(--text-primary)">Loc<span style="color:var(--accent)">pharma</span></span>
+            </div>
+            <p style="color:var(--text-secondary);font-size:0.87em;line-height:1.65">Pharmacy &amp; emergency service finder. Please review the following before proceeding.</p>
+        </div>
+        <div class="modal-body">
+            <div class="modal-section">
+                <div class="modal-section-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                </div>
+                <div>
+                    <h3>Informational Purpose Only</h3>
+                    <p>Data displayed, including pharmacy locations, operating hours, and emergency contacts, is sourced from publicly available databases and may not reflect real-time changes. Accuracy, completeness, or timeliness is not guaranteed.</p>
+                </div>
+            </div>
+            <div class="modal-section">
+                <div class="modal-section-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.67A2 2 0 012 1h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+                </div>
+                <div>
+                    <h3>Verify Before Travelling</h3>
+                    <p>Always contact your chosen pharmacy directly before making a journey. Hours, medication availability, and services may change without notice. Locpharma accepts no liability for inconvenience arising from reliance on this information.</p>
+                </div>
+            </div>
+            <div class="modal-section">
+                <div class="modal-section-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+                </div>
+                <div>
+                    <h3>Emergency Numbers Coverage</h3>
+                    <p>Our emergency database covers many countries but may not include every nation. Numbers are subject to change. In a genuine emergency, always attempt <strong>112</strong> (where available) or consult local guidance.</p>
+                </div>
+            </div>
+        </div>
+        <div class="modal-note">By clicking "Agree &amp; Enter" you acknowledge that you have read and accepted the above terms.</div>
+        <div class="modal-footer">
+            <button class="modal-btn exit" id="exitBtn">Exit</button>
+            <button class="modal-btn agree" id="agreeBtn">Agree &amp; Enter</button>
+        </div>
+    </div>
+</div>
+
+<!-- APP -->
+<div class="app" id="mainApp" style="display:none;">
+    <div id="map"></div>
+
+    <div class="sidebar">
+        <div class="header">
+            <div class="header-top">
+                <div class="header-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h12a2 2 0 002-2v-2H10v2a2 2 0 01-2 2z"/><path d="M19 3H5a2 2 0 00-2 2v14h3V5a2 2 0 012-2z"/><path d="M14 8v4m-2-2h4"/></svg>
+                </div>
+                <div class="header-wordmark">Loc<span>pharma</span></div>
+            </div>
+            <div class="controls">
+                <button class="btn btn-primary" id="locateBtn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/><circle cx="12" cy="12" r="9" opacity="0.3"/></svg>
+                    Find Near Me
+                </button>
+                <button class="btn btn-secondary" id="showAllBtn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                    Show All in Map View
+                </button>
+                <div class="filters">
+                    <label class="filter-label">
+                        <input type="checkbox" id="openOnly" checked>
+                        Open pharmacies only
+                    </label>
+                    <select class="filter-select" id="radius">
+                        <option value="1000">1 km</option>
+                        <option value="2000" selected>2 km</option>
+                        <option value="5000">5 km</option>
+                        <option value="10000">10 km</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="mode-indicator" id="modeIndicator">Mode — Search near my location</div>
+
+        <!-- Emergency Panel -->
+        <div class="emergency-panel" id="emergencyPanel" style="display:none;">
+            <div class="emergency-header">
+                <h3>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    Emergency Numbers
+                </h3>
+                <button class="emergency-toggle" id="emergencyToggle">Hide</button>
+            </div>
+            <div class="emergency-grid" id="emergencyGrid"></div>
+            <div class="emergency-slider" id="emergencySlider"></div>
+        </div>
+
+        <div class="status info" id="status">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            Click a button above to start
+        </div>
+
+        <div class="results" id="results">
+            <div class="empty">
+                <div class="empty-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h12a2 2 0 002-2v-2H10v2a2 2 0 01-2 2z"/><path d="M19 3H5a2 2 0 00-2 2v14h3V5a2 2 0 012-2z"/><path d="M14 8v4m-2-2h4"/></svg>
+                </div>
+                No results yet. Use the buttons above or pan the map and click "Show All in Map View."
+            </div>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item"><span class="dot open"></span> Open</div>
+            <div class="legend-item"><span class="dot closed"></span> Closed</div>
+            <div class="legend-item"><span class="dot unknown"></span> Unknown</div>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // ====== MODAL ======
+    document.getElementById('agreeBtn').addEventListener('click', () => {
+        document.getElementById('privacyModal').style.display = 'none';
+        document.getElementById('mainApp').style.display = 'flex';
+        setTimeout(() => map.invalidateSize(), 100);
+    });
+    document.getElementById('exitBtn').addEventListener('click', () => {
+        window.close();
+        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;background:#0b1628;color:#64748b;"><p>You may close this tab.</p></div>';
+    });
+
+    // ====== EMERGENCY DB ======
+    const EMERGENCY_NUMBERS = {
+        "AT": { country: "Austria", police: "133", ambulance: "144", fire: "122", emergency: "112" },
+        "BE": { country: "Belgium", police: "101", ambulance: "112", fire: "112", emergency: "112" },
+        "BG": { country: "Bulgaria", police: "166", ambulance: "150", fire: "160", emergency: "112" },
+        "HR": { country: "Croatia", police: "192", ambulance: "194", fire: "193", emergency: "112" },
+        "CY": { country: "Cyprus", police: "199", ambulance: "199", fire: "199", emergency: "112" },
+        "CZ": { country: "Czech Republic", police: "158", ambulance: "155", fire: "150", emergency: "112" },
+        "DK": { country: "Denmark", police: "114", ambulance: "112", fire: "112", emergency: "112" },
+        "EE": { country: "Estonia", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "FI": { country: "Finland", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "FR": { country: "France", police: "17", ambulance: "15", fire: "18", emergency: "112" },
+        "DE": { country: "Germany", police: "110", ambulance: "112", fire: "112", emergency: "112" },
+        "GR": { country: "Greece", police: "100", ambulance: "166", fire: "199", emergency: "112" },
+        "HU": { country: "Hungary", police: "107", ambulance: "104", fire: "105", emergency: "112" },
+        "IS": { country: "Iceland", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "IE": { country: "Ireland", police: "999", ambulance: "999", fire: "999", emergency: "112" },
+        "IT": { country: "Italy", police: "113", ambulance: "118", fire: "115", emergency: "112" },
+        "LV": { country: "Latvia", police: "110", ambulance: "113", fire: "114", emergency: "112" },
+        "LT": { country: "Lithuania", police: "102", ambulance: "103", fire: "101", emergency: "112" },
+        "LU": { country: "Luxembourg", police: "113", ambulance: "112", fire: "112", emergency: "112" },
+        "MT": { country: "Malta", police: "191", ambulance: "196", fire: "199", emergency: "112" },
+        "NL": { country: "Netherlands", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "NO": { country: "Norway", police: "112", ambulance: "113", fire: "110", emergency: "112" },
+        "PL": { country: "Poland", police: "997", ambulance: "999", fire: "998", emergency: "112" },
+        "PT": { country: "Portugal", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "RO": { country: "Romania", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "SK": { country: "Slovakia", police: "158", ambulance: "155", fire: "150", emergency: "112" },
+        "SI": { country: "Slovenia", police: "113", ambulance: "112", fire: "112", emergency: "112" },
+        "ES": { country: "Spain", police: "091", ambulance: "061", fire: "080", emergency: "112" },
+        "SE": { country: "Sweden", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "CH": { country: "Switzerland", police: "117", ambulance: "144", fire: "118", emergency: "112" },
+        "GB": { country: "United Kingdom", police: "999", ambulance: "999", fire: "999", emergency: "112" },
+        "UK": { country: "United Kingdom", police: "999", ambulance: "999", fire: "999", emergency: "112" },
+        "US": { country: "United States", police: "911", ambulance: "911", fire: "911", emergency: "911" },
+        "CA": { country: "Canada", police: "911", ambulance: "911", fire: "911", emergency: "911" },
+        "MX": { country: "Mexico", police: "911", ambulance: "911", fire: "911", emergency: "911" },
+        "BR": { country: "Brazil", police: "190", ambulance: "192", fire: "193", emergency: "911" },
+        "AR": { country: "Argentina", police: "911", ambulance: "911", fire: "911", emergency: "911" },
+        "CL": { country: "Chile", police: "133", ambulance: "131", fire: "132", emergency: "911" },
+        "CO": { country: "Colombia", police: "123", ambulance: "123", fire: "123", emergency: "123" },
+        "PE": { country: "Peru", police: "105", ambulance: "116", fire: "116", emergency: "911" },
+        "VE": { country: "Venezuela", police: "911", ambulance: "911", fire: "911", emergency: "911" },
+        "CN": { country: "China", police: "110", ambulance: "120", fire: "119", emergency: "112" },
+        "JP": { country: "Japan", police: "110", ambulance: "119", fire: "119", emergency: "911" },
+        "KR": { country: "South Korea", police: "112", ambulance: "119", fire: "119", emergency: "112" },
+        "IN": { country: "India", police: "100", ambulance: "102", fire: "101", emergency: "112" },
+        "ID": { country: "Indonesia", police: "110", ambulance: "118", fire: "113", emergency: "112" },
+        "TH": { country: "Thailand", police: "191", ambulance: "1669", fire: "199", emergency: "911" },
+        "VN": { country: "Vietnam", police: "113", ambulance: "115", fire: "114", emergency: "112" },
+        "MY": { country: "Malaysia", police: "999", ambulance: "999", fire: "999", emergency: "999" },
+        "PH": { country: "Philippines", police: "117", ambulance: "117", fire: "117", emergency: "911" },
+        "SG": { country: "Singapore", police: "999", ambulance: "995", fire: "995", emergency: "999" },
+        "TW": { country: "Taiwan", police: "110", ambulance: "119", fire: "119", emergency: "112" },
+        "HK": { country: "Hong Kong", police: "999", ambulance: "999", fire: "999", emergency: "999" },
+        "TR": { country: "Turkey", police: "155", ambulance: "112", fire: "110", emergency: "112" },
+        "AE": { country: "UAE", police: "999", ambulance: "998", fire: "997", emergency: "999" },
+        "SA": { country: "Saudi Arabia", police: "999", ambulance: "997", fire: "998", emergency: "999" },
+        "IL": { country: "Israel", police: "100", ambulance: "101", fire: "102", emergency: "112" },
+        "AU": { country: "Australia", police: "000", ambulance: "000", fire: "000", emergency: "000" },
+        "NZ": { country: "New Zealand", police: "111", ambulance: "111", fire: "111", emergency: "111" },
+        "ZA": { country: "South Africa", police: "10111", ambulance: "10177", fire: "10177", emergency: "112" },
+        "EG": { country: "Egypt", police: "122", ambulance: "123", fire: "180", emergency: "112" },
+        "NG": { country: "Nigeria", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "KE": { country: "Kenya", police: "999", ambulance: "999", fire: "999", emergency: "999" },
+        "MA": { country: "Morocco", police: "19", ambulance: "15", fire: "15", emergency: "112" },
+        "RU": { country: "Russia", police: "102", ambulance: "103", fire: "101", emergency: "112" },
+        "UA": { country: "Ukraine", police: "102", ambulance: "103", fire: "101", emergency: "112" },
+        "BY": { country: "Belarus", police: "102", ambulance: "103", fire: "101", emergency: "112" },
+    };
+
+    // ====== MAP ======
+    const map = L.map('map', { zoomControl: true }).setView([51.505, -0.09], 13);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+    }).addTo(map);
+
+    let userLoc = null, markers = [], currentMode = 'location';
+    let emergencyVisible = true;
+
+    const statusEl = document.getElementById('status');
+    const resultsEl = document.getElementById('results');
+    const btn = document.getElementById('locateBtn');
+    const showAllBtn = document.getElementById('showAllBtn');
+    const modeIndicator = document.getElementById('modeIndicator');
+    const emergencyPanel = document.getElementById('emergencyPanel');
+    const emergencyGrid = document.getElementById('emergencyGrid');
+    const emergencySlider = document.getElementById('emergencySlider');
+    const emergencyToggle = document.getElementById('emergencyToggle');
+
+    // SVG icons for status
+    const ICONS = {
+        info: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+        loading: `<div class="spinner"></div>`,
+        success: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+        error: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`
+    };
+
+    function setStatus(msg, type) {
+        statusEl.innerHTML = (ICONS[type] || '') + `<span>${msg}</span>`;
+        statusEl.className = 'status ' + type;
+    }
+
+    function clearMarkers() { markers.forEach(m => map.removeLayer(m)); markers = []; }
+
+    function getDist(lat1, lon1, lat2, lon2) {
+        const R = 6371, d = a => a * Math.PI / 180;
+        const a = Math.sin(d(lat2-lat1)/2)**2 + Math.cos(d(lat1))*Math.cos(d(lat2))*Math.sin(d(lon2-lon1)/2)**2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    emergencyToggle.addEventListener('click', () => {
+        emergencyVisible = !emergencyVisible;
+        emergencyGrid.style.display = emergencyVisible ? 'grid' : 'none';
+        emergencySlider.style.display = emergencyVisible ? 'flex' : 'none';
+        emergencyToggle.textContent = emergencyVisible ? 'Hide' : 'Show';
+    });
+
+    async function detectCountry(lat, lng) {
+        try {
+            const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`);
+            const data = await res.json();
+            return data.countryCode || null;
+        } catch { return null; }
+    }
+
+    function showEmergencyNumbers(countryCode) {
+        const info = EMERGENCY_NUMBERS[countryCode.toUpperCase()];
+        if (!info) { emergencyPanel.style.display = 'none'; return; }
+
+        emergencyPanel.style.display = 'block';
+        emergencyVisible = true;
+        emergencyToggle.textContent = 'Hide';
+
+        const entries = [
+            { num: info.police, label: 'Police' },
+            { num: info.ambulance, label: 'Ambulance' },
+            { num: info.fire, label: 'Fire' }
+        ];
+
+        emergencyGrid.innerHTML = entries.map(e => `
+            <div class="emergency-item">
+                <a href="tel:${e.num}">
+                    <span class="num">${e.num}</span>
+                    <span class="label">${e.label}</span>
+                </a>
+            </div>`).join('');
+
+        emergencySlider.innerHTML = [...entries, { num: info.emergency, label: 'Emergency' }].map(e => `
+            <div class="emergency-slide">
+                <a href="tel:${e.num}">
+                    <span class="num">${e.num}</span>
+                    <span class="label">${e.label}</span>
+                </a>
+            </div>`).join('');
+
+        emergencyGrid.style.display = 'grid';
+        emergencySlider.style.display = 'flex';
+    }
+
+    // ====== HOURS PARSER ======
+    const DAY_NAMES = ['su','mo','tu','we','th','fr','sa'];
+    function dayIndex(n) { return DAY_NAMES.indexOf(n); }
+
+    function ruleAppliesToDay(rule, currentDay) {
+        if (!/(mo|tu|we|th|fr|sa|su)/.test(rule)) return true;
+        const re = /(mo|tu|we|th|fr|sa|su)(?:-(mo|tu|we|th|fr|sa|su))?/g;
+        let m;
+        while ((m = re.exec(rule)) !== null) {
+            const s = dayIndex(m[1]), e = m[2] ? dayIndex(m[2]) : s;
+            if (s === -1 || e === -1) continue;
+            if (s <= e ? (currentDay >= s && currentDay <= e) : (currentDay >= s || currentDay <= e)) return true;
+        }
+        return false;
+    }
+
+    function extractTimeRanges(rule) {
+        const r = [], re = /(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/g; let m;
+        while ((m = re.exec(rule)) !== null) r.push([+m[1]*60+ +m[2], +m[3]*60+ +m[4]]);
+        return r;
+    }
+
+    function checkOpen(hoursStr) {
+        if (!hoursStr) return null;
+        const raw = hoursStr.trim();
+        if (raw === '24/7') return true;
+        const now = new Date(), cd = now.getDay(), ct = now.getHours()*60 + now.getMinutes();
+        let hasRuleForToday = false;
+        for (let rule of raw.split(/;\s*/)) {
+            rule = rule.trim().toLowerCase().replace(/\s+/g,' ');
+            if (!rule || !ruleAppliesToDay(rule, cd)) continue;
+            hasRuleForToday = true;
+            if (/\b(off|closed)\b/.test(rule)) return false;
+            for (let [s,e] of extractTimeRanges(rule)) if (ct >= s && ct <= e) return true;
+        }
+        return hasRuleForToday ? false : null;
+    }
+
+    // ====== DISPLAY ======
+    function displayPharmacies(list, centerPoint) {
+        const openOnly = document.getElementById('openOnly').checked;
+        const show = openOnly ? list.filter(p => p.isOpen === true) : list;
+
+        if (show.length === 0) {
+            setStatus(`Found ${list.length} — none open now`, 'error');
+            resultsEl.innerHTML = `<div class="empty">
+                <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></div>
+                No open pharmacies found. Uncheck "Open only" to see all results.
+            </div>`;
+            return;
+        }
+
+        resultsEl.innerHTML = '';
+
+        show.forEach((p, i) => {
+            const cls = p.isOpen === true ? 'open' : p.isOpen === false ? 'closed' : 'unknown';
+            const txt = p.isOpen === true ? 'OPEN' : p.isOpen === false ? 'CLOSED' : 'UNKNOWN';
+            const col = p.isOpen === true ? '#10b981' : p.isOpen === false ? '#ef4444' : '#f59e0b';
+
+            const icon = L.divIcon({
+                html: `<div style="background:${col};width:26px;height:26px;border-radius:50%;border:2.5px solid rgba(255,255,255,0.9);box-shadow:0 2px 8px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:10px;font-family:'DM Sans',sans-serif;">${i+1}</div>`,
+                iconSize: [26,26], iconAnchor: [13,13]
+            });
+
+            const m = L.marker([p.lat, p.lon], {icon}).addTo(map);
+            m.bindPopup(`<div style="font-family:'DM Sans',sans-serif;padding:2px 0"><b style="color:#f1f5f9;font-size:13px;">${p.name}</b><br><span style="color:${col};font-weight:600;font-size:12px;">${txt}</span><br><span style="color:#94a3b8;font-size:12px;">${p.address}</span>${p.phone ? `<br><span style="color:#94a3b8;font-size:12px;">${p.phone}</span>` : ''}${p.hours ? `<br><span style="color:#64748b;font-size:11px;">${p.hours}</span>` : ''}</div>`);
+            markers.push(m);
+
+            const card = document.createElement('div');
+            card.className = 'card ' + cls;
+
+            let distHtml = '';
+            if (centerPoint) {
+                const d = getDist(centerPoint.lat, centerPoint.lng, p.lat, p.lon);
+                distHtml = `<div class="card-row dist"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/></svg>${d.toFixed(2)} km away</div>`;
+            }
+
+            card.innerHTML = `
+                <div class="card-top">
+                    <h4>${i+1}. ${p.name}</h4>
+                    <span class="badge ${cls}">${txt}</span>
+                </div>
+                <div class="card-meta">
+                    ${distHtml}
+                    <div class="card-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>${p.address}</div>
+                    ${p.phone ? `<div class="card-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.67A2 2 0 012 1h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>${p.phone}</div>` : ''}
+                    ${p.hours ? `<div class="card-row hours"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>${p.hours}</div>` : ''}
+                </div>`;
+
+            card.onclick = () => { map.setView([p.lat, p.lon], 17); m.openPopup(); };
+            resultsEl.appendChild(card);
+        });
+
+        setStatus(`${show.length} pharmacy${show.length !== 1 ? 's' : ''} found`, 'success');
+        if (markers.length > 0) map.fitBounds(L.featureGroup(markers).getBounds().pad(0.1));
+    }
+
+    function processElements(elements, centerPoint) {
+        const list = [];
+        elements.forEach(el => {
+            let lat, lon, tags = el.tags || {};
+            if (el.type === 'node') { lat = el.lat; lon = el.lon; }
+            else if (el.center) { lat = el.center.lat; lon = el.center.lon; }
+            else return;
+
+            const addr = [tags['addr:street'],tags['addr:housenumber'],tags['addr:postcode'],tags['addr:city']].filter(Boolean).join(' ') || 'Address not available';
+            list.push({
+                name: tags.name || tags['name:en'] || 'Unnamed Pharmacy',
+                lat, lon, address: addr,
+                phone: tags.phone || tags['contact:phone'] || null,
+                hours: tags.opening_hours || null,
+                isOpen: checkOpen(tags.opening_hours),
+                dist: centerPoint ? getDist(centerPoint.lat, centerPoint.lng, lat, lon) : 0
+            });
+        });
+        list.sort((a, b) => a.dist - b.dist);
+        return list;
+    }
+
+    async function searchNearMe() {
+        if (!userLoc) return;
+        const radius = parseInt(document.getElementById('radius').value);
+        setStatus('Searching pharmacies near you…', 'loading');
+        btn.disabled = true; showAllBtn.disabled = true;
+
+        const cc = await detectCountry(userLoc.lat, userLoc.lng);
+        if (cc) showEmergencyNumbers(cc);
+
+        const query = `[out:json][timeout:25];(nwr["amenity"="pharmacy"](around:${radius},${userLoc.lat},${userLoc.lng}););out center tags;`;
+        try {
+            const res = await fetch('https://overpass-api.de/api/interpreter', { method:'POST', body: query, headers:{'Content-Type':'application/x-www-form-urlencoded'} });
+            const data = await res.json();
+            if (!data.elements?.length) {
+                setStatus('No pharmacies found. Try a larger radius.', 'error');
+                resultsEl.innerHTML = '<div class="empty"><div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></div>No pharmacies found in this area.</div>';
+                clearMarkers(); return;
+            }
+            clearMarkers();
+            displayPharmacies(processElements(data.elements, userLoc), userLoc);
+        } catch { setStatus('Error loading data. Please try again.', 'error'); }
+        btn.disabled = false; showAllBtn.disabled = false;
+    }
+
+    async function showAllInView() {
+        const bounds = map.getBounds(), sw = bounds.getSouthWest(), ne = bounds.getNorthEast();
+        if (Math.abs(ne.lat-sw.lat)*Math.abs(ne.lng-sw.lng) > 5) { setStatus('Map area too large — zoom in closer.', 'error'); return; }
+
+        setStatus('Loading pharmacies in map view…', 'loading');
+        btn.disabled = true; showAllBtn.disabled = true;
+
+        const centerLat = (sw.lat+ne.lat)/2, centerLng = (sw.lng+ne.lng)/2;
+        const cc = await detectCountry(centerLat, centerLng);
+        if (cc) showEmergencyNumbers(cc);
+
+        const query = `[out:json][timeout:30];(nwr["amenity"="pharmacy"](${sw.lat},${sw.lng},${ne.lat},${ne.lng}););out center tags;`;
+        try {
+            const res = await fetch('https://overpass-api.de/api/interpreter', { method:'POST', body: query, headers:{'Content-Type':'application/x-www-form-urlencoded'} });
+            const data = await res.json();
+            if (!data.elements?.length) {
+                setStatus('No pharmacies in this map area.', 'error');
+                resultsEl.innerHTML = '<div class="empty"><div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></div>No pharmacies visible. Try panning to a city.</div>';
+                clearMarkers(); return;
+            }
+            clearMarkers();
+            const list = processElements(data.elements, null);
+            list.sort((a,b) => a.name.localeCompare(b.name));
+            displayPharmacies(list, null);
+        } catch { setStatus('Error loading data. The area may be too large.', 'error'); }
+        btn.disabled = false; showAllBtn.disabled = false;
+    }
+
+    btn.addEventListener('click', () => {
+        if (!navigator.geolocation) { setStatus('Geolocation not supported by this browser.', 'error'); return; }
+        currentMode = 'location';
+        modeIndicator.textContent = 'Mode — Search near my location';
+        setStatus('Getting your location…', 'loading');
+        btn.disabled = true;
+
+        navigator.geolocation.getCurrentPosition(
+            pos => {
+                userLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                map.setView([userLoc.lat, userLoc.lng], 14);
+                L.circleMarker([userLoc.lat, userLoc.lng], {
+                    radius: 8, fillColor: '#3b82f6', color: 'white', weight: 2.5, fillOpacity: 1
+                }).addTo(map).bindPopup('<span style="color:#f1f5f9;font-size:12px;">Your location</span>').openPopup();
+                searchNearMe();
+            },
+            () => { setStatus('Location denied. Allow access in browser settings.', 'error'); btn.disabled = false; },
+            { enableHighAccuracy: true, timeout: 15000 }
+        );
+    });
+
+    showAllBtn.addEventListener('click', () => {
+        currentMode = 'viewport';
+        modeIndicator.textContent = 'Mode — Show all in current map view';
+        showAllInView();
+    });
+
+    document.getElementById('openOnly').addEventListener('change', () => {
+        if (currentMode === 'location' && userLoc) searchNearMe();
+        else if (currentMode === 'viewport') showAllInView();
+    });
+    document.getElementById('radius').addEventListener('change', () => {
+        if (currentMode === 'location' && userLoc) searchNearMe();
+    });
+</script>
+</body>
+</html>
