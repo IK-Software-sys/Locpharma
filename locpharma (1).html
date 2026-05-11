@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Locpharma — Pharmacy & Emergency Finder</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #0d9488;
+            --accent-dark: #0f766e;
+            --accent-light: #ccfbf1;
+            --danger: #dc2626;
+            --danger-light: #fef2f2;
+            --success: #16a34a;
+            --success-light: #f0fdf4;
+            --warn: #d97706;
+            --warn-light: #fffbeb;
+            --text: #1f2937;
+            --text-secondary: #6b7280;
+            --text-muted: #9ca3af;
+            --bg: #f8fafc;
+            --bg-white: #ffffff;
+            --border: #e5e7eb;
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            --radius: 10px;
+            --radius-sm: 6px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; color: var(--text); overflow: hidden; -webkit-font-smoothing: antialiased; }
+
+        /* ===== TERMS MODAL ===== */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px);
+            z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 24px;
+        }
+        .modal-box {
+            background: var(--bg-white); border-radius: 16px; max-width: 560px; width: 100%;
+            max-height: 88vh; overflow-y: auto; box-shadow: var(--shadow-lg); border: 1px solid var(--border);
+            animation: modalIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes modalIn { from { opacity: 0; transform: scale(0.96) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        .modal-header { padding: 32px 32px 0; }
+        .modal-header h2 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
+        .modal-header p { font-size: 0.875rem; color: var(--text-secondary); margin-top: 4px; }
+        .modal-body { padding: 24px 32px; }
+        .term-block { margin-bottom: 20px; }
+        .term-block:last-child { margin-bottom: 0; }
+        .term-block h3 {
+            font-size: 0.875rem; font-weight: 600; color: var(--text); margin-bottom: 6px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .term-block h3 .num { 
+            display: inline-flex; align-items: center; justify-content: center; 
+            width: 22px; height: 22px; border-radius: 50%; background: var(--accent-light); 
+            color: var(--accent-dark); font-size: 0.75rem; font-weight: 700; flex-shrink: 0;
+        }
+        .term-block p { font-size: 0.8125rem; line-height: 1.7; color: var(--text-secondary); }
+        .modal-footer {
+            padding: 20px 32px 32px; display: flex; gap: 10px; border-top: 1px solid var(--border);
+            position: sticky; bottom: 0; background: var(--bg-white);
+        }
+        .btn-modal {
+            flex: 1; padding: 11px 16px; border-radius: var(--radius-sm); font-size: 0.875rem;
+            font-weight: 600; cursor: pointer; transition: all 0.15s; border: none;
+        }
+        .btn-modal.primary { background: var(--accent); color: white; }
+        .btn-modal.primary:hover { background: var(--accent-dark); }
+        .btn-modal.secondary { background: var(--bg); color: var(--text-secondary); border: 1px solid var(--border); }
+        .btn-modal.secondary:hover { background: var(--border); color: var(--text); }
+
+        /* ===== MAIN APP ===== */
+        .app { display: flex; height: 100vh; width: 100vw; }
+        #map { flex: 1; height: 100%; background: #e2e8f0; z-index: 1; }
+
+        .sidebar {
+            width: 400px; height: 100%; background: var(--bg-white);
+            display: flex; flex-direction: column; border-left: 1px solid var(--border);
+            z-index: 2;
+        }
+
+        .sidebar-header {
+            padding: 20px 20px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+        }
+        .sidebar-header .brand {
+            display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+        }
+        .brand-icon {
+            width: 36px; height: 36px; border-radius: var(--radius-sm); background: var(--accent);
+            display: flex; align-items: center; justify-content: center; color: white; font-size: 1.1rem;
+        }
+        .brand-text h1 { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.01em; color: var(--text); line-height: 1.2; }
+        .brand-text span { font-size: 0.75rem; color: var(--text-muted); font-weight: 500; }
+
+        .search-controls { display: flex; gap: 8px; margin-bottom: 12px; }
+        .search-controls .btn {
+            flex: 1; padding: 9px 12px; border-radius: var(--radius-sm); border: none;
+            font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.15s;
+            display: flex; align-items: center; justify-content: center; gap: 6px;
+        }
+        .btn-main { background: var(--accent); color: white; }
+        .btn-main:hover { background: var(--accent-dark); }
+        .btn-alt { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+        .btn-alt:hover { background: var(--border); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .filter-bar {
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        }
+        .filter-bar label {
+            font-size: 0.8rem; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;
+            cursor: pointer; font-weight: 500;
+        }
+        .filter-bar input[type="checkbox"] {
+            width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer;
+        }
+        .filter-bar select {
+            padding: 5px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+            background: var(--bg-white); font-size: 0.8rem; color: var(--text); cursor: pointer;
+            font-family: inherit;
+        }
+
+        .mode-pill {
+            padding: 5px 20px; font-size: 0.7rem; font-weight: 600; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.05em; text-align: center;
+            border-bottom: 1px solid var(--border); flex-shrink: 0; background: var(--bg);
+        }
+
+        /* Emergency strip */
+        .emergency-strip {
+            background: var(--danger-light); border-bottom: 1px solid #fecaca; flex-shrink: 0;
+            padding: 12px 20px; display: none;
+        }
+        .emergency-strip.visible { display: block; }
+        .emergency-top {
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;
+        }
+        .emergency-top h3 { font-size: 0.8rem; font-weight: 700; color: var(--danger); display: flex; align-items: center; gap: 6px; }
+        .emergency-toggle {
+            font-size: 0.7rem; font-weight: 600; color: var(--danger); background: transparent;
+            border: none; cursor: pointer; padding: 2px 6px; border-radius: 4px;
+        }
+        .emergency-toggle:hover { background: #fecaca; }
+
+        .emergency-strip.content-collapsed .emergency-grid,
+        .emergency-strip.content-collapsed .emergency-slider {
+            display: none !important;
+        }
+
+        .emergency-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+        }
+        .emergency-item {
+            background: white; border: 1px solid #fecaca; border-radius: var(--radius-sm);
+            padding: 8px; text-align: center; transition: all 0.15s;
+        }
+        .emergency-item:hover { border-color: var(--danger); box-shadow: var(--shadow-sm); }
+        .emergency-item a { text-decoration: none; color: inherit; display: block; }
+        .emergency-item .num { font-size: 1.1rem; font-weight: 700; color: var(--danger); display: block; line-height: 1.2; }
+        .emergency-item .label { font-size: 0.7rem; color: var(--text-secondary); font-weight: 500; margin-top: 2px; display: block; }
+
+        /* Mobile emergency slider */
+        .emergency-slider {
+            display: none; gap: 8px; overflow-x: auto; padding: 2px 0;
+            scrollbar-width: none; -ms-overflow-style: none;
+        }
+        .emergency-slider::-webkit-scrollbar { display: none; }
+        .emergency-slide {
+            flex: 0 0 auto; background: white; border: 1px solid #fecaca; border-radius: var(--radius-sm);
+            padding: 10px 16px; text-align: center; min-width: 80px;
+        }
+        .emergency-slide a { text-decoration: none; color: inherit; }
+        .emergency-slide .num { font-size: 1.2rem; font-weight: 700; color: var(--danger); display: block; }
+        .emergency-slide .label { font-size: 0.7rem; color: var(--text-secondary); font-weight: 500; }
+
+        .status-bar {
+            padding: 8px 20px; font-size: 0.8rem; font-weight: 500;
+            display: flex; align-items: center; justify-content: center; gap: 6px;
+            flex-shrink: 0; min-height: 36px;
+        }
+        .status-bar.info { background: #eff6ff; color: #1e40af; }
+        .status-bar.loading { background: #fffbeb; color: #92400e; }
+        .status-bar.success { background: var(--success-light); color: #166534; }
+        .status-bar.error { background: var(--danger-light); color: #991b1b; }
+
+        .results { flex: 1; overflow-y: auto; padding: 12px 20px; min-height: 0; background: var(--bg); }
+
+        .pharmacy-card {
+            background: var(--bg-white); border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 14px; margin-bottom: 10px; cursor: pointer; transition: all 0.15s;
+            position: relative; overflow: hidden;
+        }
+        .pharmacy-card::before {
+            content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--border);
+            transition: background 0.15s;
+        }
+        .pharmacy-card:hover { box-shadow: var(--shadow); border-color: #d1d5db; }
+        .pharmacy-card:hover::before { width: 4px; }
+        .pharmacy-card.open::before { background: var(--success); }
+        .pharmacy-card.closed::before { background: var(--danger); }
+        .pharmacy-card.unknown::before { background: var(--warn); }
+
+        .card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+        .card-header h4 { font-size: 0.9rem; font-weight: 600; color: var(--text); line-height: 1.3; flex: 1; }
+        .status-tag {
+            font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+            padding: 3px 8px; border-radius: 999px; white-space: nowrap; flex-shrink: 0;
+        }
+        .status-tag.open { background: var(--success-light); color: var(--success); }
+        .status-tag.closed { background: var(--danger-light); color: var(--danger); }
+        .status-tag.unknown { background: var(--warn-light); color: var(--warn); }
+
+        .card-body p { font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5; margin: 2px 0; }
+        .card-body .distance { color: var(--accent); font-weight: 600; }
+        .card-body .hours { font-family: 'SF Mono', Monaco, monospace; font-size: 0.75rem; color: var(--text-muted); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+
+        .empty-state {
+            text-align: center; padding: 48px 20px; color: var(--text-muted);
+        }
+        .empty-state svg { width: 40px; height: 40px; margin-bottom: 12px; opacity: 0.4; }
+        .empty-state p { font-size: 0.85rem; }
+
+        .sidebar-footer {
+            padding: 10px 20px; border-top: 1px solid var(--border); background: var(--bg-white);
+            display: flex; gap: 16px; justify-content: center; flex-shrink: 0;
+        }
+        .sidebar-footer span { font-size: 0.7rem; color: var(--text-muted); display: flex; align-items: center; gap: 5px; }
+        .sidebar-footer .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+        .dot.open { background: var(--success); }
+        .dot.closed { background: var(--danger); }
+        .dot.unknown { background: var(--warn); }
+
+        /* ===== MOBILE ===== */
+        @media (max-width: 768px) {
+            .app { flex-direction: column; }
+            #map { height: 40vh; width: 100%; flex: none; }
+            .sidebar { width: 100%; height: 60vh; }
+
+            .sidebar-header { padding: 14px 16px 12px; }
+            .brand-icon { width: 32px; height: 32px; font-size: 1rem; }
+            .brand-text h1 { font-size: 1.05rem; }
+            .search-controls { margin-bottom: 10px; }
+            .search-controls .btn { padding: 8px 10px; font-size: 0.78rem; }
+
+            .emergency-grid { display: none !important; }
+            .emergency-slider { display: flex; }
+
+            .results { padding: 10px 14px; }
+            .pharmacy-card { padding: 12px; margin-bottom: 8px; }
+            .card-header h4 { font-size: 0.85rem; }
+            .card-body p { font-size: 0.78rem; }
+
+            .modal-box { max-height: 92vh; border-radius: 14px; }
+            .modal-header, .modal-body { padding-left: 20px; padding-right: 20px; }
+            .modal-header { padding-top: 24px; }
+            .modal-footer { padding: 16px 20px 24px; }
+        }
+
+        @media (min-width: 769px) {
+            .emergency-grid { display: grid !important; }
+            .emergency-slider { display: none !important; }
+        }
+
+        @media (max-width: 768px) and (orientation: landscape) {
+            .app { flex-direction: row; }
+            #map { height: 100vh; width: 50%; }
+            .sidebar { width: 50%; height: 100vh; }
+            .emergency-grid { display: grid !important; }
+            .emergency-slider { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- TERMS OF USE MODAL -->
+<div class="modal-overlay" id="privacyModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h2>Terms of Use</h2>
+            <p>Please read carefully before using Locpharma</p>
+        </div>
+        <div class="modal-body">
+            <div class="term-block">
+                <h3><span class="num">1</span> Informational Purpose Only</h3>
+                <p>Locpharma is provided solely for informational and reference purposes. All data, including pharmacy locations, operating hours, and emergency contact numbers, is sourced from publicly available databases and community contributions. We do not guarantee the accuracy, completeness, or real-time validity of any information displayed.</p>
+            </div>
+            <div class="term-block">
+                <h3><span class="num">2</span> Verify Before Travelling</h3>
+                <p>We strongly advise contacting any pharmacy directly by telephone before visiting. Operating hours, medication availability, and services may change without notice. Locpharma accepts no liability for inconvenience, loss, or damages resulting from reliance on the information provided.</p>
+            </div>
+            <div class="term-block">
+                <h3><span class="num">3</span> Emergency Numbers Coverage</h3>
+                <p>Our emergency number database covers numerous countries and territories but may not be exhaustive for every region worldwide. Emergency service numbers are subject to change by local authorities. In any emergency, dial the universal number <strong>112</strong> where available, or follow local emergency guidance.</p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-modal secondary" id="exitBtn">Exit</button>
+            <button class="btn-modal primary" id="agreeBtn">Agree & Enter</button>
+        </div>
+    </div>
+</div>
+
+<!-- MAIN APP -->
+<div class="app" id="mainApp" style="display:none;">
+    <div id="map"></div>
+
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <div class="brand">
+                <div class="brand-icon">+</div>
+                <div class="brand-text">
+                    <h1>Locpharma</h1>
+                    <span>Pharmacy & Emergency Finder</span>
+                </div>
+            </div>
+            <div class="search-controls">
+                <button class="btn btn-main" id="locateBtn">Find Near Me</button>
+                <button class="btn btn-alt" id="showAllBtn">Show Map View</button>
+            </div>
+            <div class="filter-bar">
+                <label><input type="checkbox" id="openOnly" checked> Open now only</label>
+                <select id="radius">
+                    <option value="1000">1 km</option>
+                    <option value="2000" selected>2 km</option>
+                    <option value="5000">5 km</option>
+                    <option value="10000">10 km</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="mode-pill" id="modeIndicator">Search near my location</div>
+
+        <div class="emergency-strip" id="emergencyPanel">
+            <div class="emergency-top">
+                <h3>Emergency Numbers</h3>
+                <button class="emergency-toggle" id="emergencyToggle">Hide</button>
+            </div>
+            <div class="emergency-grid" id="emergencyGrid"></div>
+            <div class="emergency-slider" id="emergencySlider"></div>
+        </div>
+
+        <div class="status-bar info" id="status">Click a button above to begin</div>
+
+        <div class="results" id="results">
+            <div class="empty-state">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 6.75V15m6-6v8.25m.503 3.498l4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 00-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0z"/></svg>
+                <p>No results yet. Use the buttons above to search.</p>
+            </div>
+        </div>
+
+        <div class="sidebar-footer">
+            <span><span class="dot open"></span> Open</span>
+            <span><span class="dot closed"></span> Closed</span>
+            <span><span class="dot unknown"></span> Unknown</span>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    const EMERGENCY_NUMBERS = {
+        "AT": { country: "Austria", police: "133", ambulance: "144", fire: "122", emergency: "112" },
+        "BE": { country: "Belgium", police: "101", ambulance: "112", fire: "112", emergency: "112" },
+        "BG": { country: "Bulgaria", police: "166", ambulance: "150", fire: "160", emergency: "112" },
+        "HR": { country: "Croatia", police: "192", ambulance: "194", fire: "193", emergency: "112" },
+        "CY": { country: "Cyprus", police: "199", ambulance: "199", fire: "199", emergency: "112" },
+        "CZ": { country: "Czech Republic", police: "158", ambulance: "155", fire: "150", emergency: "112" },
+        "DK": { country: "Denmark", police: "114", ambulance: "112", fire: "112", emergency: "112" },
+        "EE": { country: "Estonia", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "FI": { country: "Finland", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "FR": { country: "France", police: "17", ambulance: "15", fire: "18", emergency: "112" },
+        "DE": { country: "Germany", police: "110", ambulance: "112", fire: "112", emergency: "112" },
+        "GR": { country: "Greece", police: "100", ambulance: "166", fire: "199", emergency: "112" },
+        "HU": { country: "Hungary", police: "107", ambulance: "104", fire: "105", emergency: "112" },
+        "IS": { country: "Iceland", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "IE": { country: "Ireland", police: "999", ambulance: "999", fire: "999", emergency: "112" },
+        "IT": { country: "Italy", police: "113", ambulance: "118", fire: "115", emergency: "112" },
+        "LV": { country: "Latvia", police: "110", ambulance: "113", fire: "114", emergency: "112" },
+        "LT": { country: "Lithuania", police: "102", ambulance: "103", fire: "101", emergency: "112" },
+        "LU": { country: "Luxembourg", police: "113", ambulance: "112", fire: "112", emergency: "112" },
+        "MT": { country: "Malta", police: "191", ambulance: "196", fire: "199", emergency: "112" },
+        "NL": { country: "Netherlands", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "NO": { country: "Norway", police: "112", ambulance: "113", fire: "110", emergency: "112" },
+        "PL": { country: "Poland", police: "997", ambulance: "999", fire: "998", emergency: "112" },
+        "PT": { country: "Portugal", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "RO": { country: "Romania", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "SK": { country: "Slovakia", police: "158", ambulance: "155", fire: "150", emergency: "112" },
+        "SI": { country: "Slovenia", police: "113", ambulance: "112", fire: "112", emergency: "112" },
+        "ES": { country: "Spain", police: "091", ambulance: "061", fire: "080", emergency: "112" },
+        "SE": { country: "Sweden", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "CH": { country: "Switzerland", police: "117", ambulance: "144", fire: "118", emergency: "112" },
+        "GB": { country: "United Kingdom", police: "999", ambulance: "999", fire: "999", emergency: "112" },
+        "UK": { country: "United Kingdom", police: "999", ambulance: "999", fire: "999", emergency: "112" },
+        "US": { country: "United States", police: "911", ambulance: "911", fire: "911", emergency: "911" },
+        "CA": { country: "Canada", police: "911", ambulance: "911", fire: "911", emergency: "911" },
+        "MX": { country: "Mexico", police: "911", ambulance: "911", fire: "911", emergency: "911" },
+        "BR": { country: "Brazil", police: "190", ambulance: "192", fire: "193", emergency: "911" },
+        "AR": { country: "Argentina", police: "911", ambulance: "911", fire: "911", emergency: "911" },
+        "CL": { country: "Chile", police: "133", ambulance: "131", fire: "132", emergency: "911" },
+        "CO": { country: "Colombia", police: "123", ambulance: "123", fire: "123", emergency: "123" },
+        "PE": { country: "Peru", police: "105", ambulance: "116", fire: "116", emergency: "911" },
+        "VE": { country: "Venezuela", police: "911", ambulance: "911", fire: "911", emergency: "911" },
+        "CN": { country: "China", police: "110", ambulance: "120", fire: "119", emergency: "112" },
+        "JP": { country: "Japan", police: "110", ambulance: "119", fire: "119", emergency: "911" },
+        "KR": { country: "South Korea", police: "112", ambulance: "119", fire: "119", emergency: "112" },
+        "IN": { country: "India", police: "100", ambulance: "102", fire: "101", emergency: "112" },
+        "ID": { country: "Indonesia", police: "110", ambulance: "118", fire: "113", emergency: "112" },
+        "TH": { country: "Thailand", police: "191", ambulance: "1669", fire: "199", emergency: "911" },
+        "VN": { country: "Vietnam", police: "113", ambulance: "115", fire: "114", emergency: "112" },
+        "MY": { country: "Malaysia", police: "999", ambulance: "999", fire: "999", emergency: "999" },
+        "PH": { country: "Philippines", police: "117", ambulance: "117", fire: "117", emergency: "911" },
+        "SG": { country: "Singapore", police: "999", ambulance: "995", fire: "995", emergency: "999" },
+        "TW": { country: "Taiwan", police: "110", ambulance: "119", fire: "119", emergency: "112" },
+        "HK": { country: "Hong Kong", police: "999", ambulance: "999", fire: "999", emergency: "999" },
+        "TR": { country: "Turkey", police: "155", ambulance: "112", fire: "110", emergency: "112" },
+        "AE": { country: "UAE", police: "999", ambulance: "998", fire: "997", emergency: "999" },
+        "SA": { country: "Saudi Arabia", police: "999", ambulance: "997", fire: "998", emergency: "999" },
+        "IL": { country: "Israel", police: "100", ambulance: "101", fire: "102", emergency: "112" },
+        "AU": { country: "Australia", police: "000", ambulance: "000", fire: "000", emergency: "000" },
+        "NZ": { country: "New Zealand", police: "111", ambulance: "111", fire: "111", emergency: "111" },
+        "ZA": { country: "South Africa", police: "10111", ambulance: "10177", fire: "10177", emergency: "112" },
+        "EG": { country: "Egypt", police: "122", ambulance: "123", fire: "180", emergency: "112" },
+        "NG": { country: "Nigeria", police: "112", ambulance: "112", fire: "112", emergency: "112" },
+        "KE": { country: "Kenya", police: "999", ambulance: "999", fire: "999", emergency: "999" },
+        "MA": { country: "Morocco", police: "19", ambulance: "15", fire: "15", emergency: "112" },
+        "RU": { country: "Russia", police: "102", ambulance: "103", fire: "101", emergency: "112" },
+        "UA": { country: "Ukraine", police: "102", ambulance: "103", fire: "101", emergency: "112" },
+        "BY": { country: "Belarus", police: "102", ambulance: "103", fire: "101", emergency: "112" },
+    };
+
+    // Modal
+    const privacyModal = document.getElementById('privacyModal');
+    const mainApp = document.getElementById('mainApp');
+    document.getElementById('agreeBtn').addEventListener('click', () => {
+        privacyModal.style.display = 'none';
+        mainApp.style.display = 'flex';
+        setTimeout(() => map.invalidateSize(), 100);
+    });
+    document.getElementById('exitBtn').addEventListener('click', () => {
+        window.close();
+        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#64748b;"><p>You may close this tab.</p></div>';
+    });
+
+    // Map
+    const map = L.map('map').setView([51.505, -0.09], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19, attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    let userLoc = null, markers = [], currentMode = 'location', emergencyVisible = true;
+    const statusEl = document.getElementById('status');
+    const resultsEl = document.getElementById('results');
+    const btn = document.getElementById('locateBtn');
+    const showAllBtn = document.getElementById('showAllBtn');
+    const modeIndicator = document.getElementById('modeIndicator');
+    const emergencyPanel = document.getElementById('emergencyPanel');
+    const emergencyGrid = document.getElementById('emergencyGrid');
+    const emergencySlider = document.getElementById('emergencySlider');
+    const emergencyToggle = document.getElementById('emergencyToggle');
+
+    function setStatus(msg, type) {
+        statusEl.textContent = msg;
+        statusEl.className = 'status-bar ' + type;
+    }
+    function clearMarkers() { markers.forEach(m => map.removeLayer(m)); markers = []; }
+    function getDist(lat1, lon1, lat2, lon2) {
+        const R = 6371, d = a => a * Math.PI / 180;
+        const a = Math.sin(d(lat2-lat1)/2)**2 + Math.cos(d(lat1))*Math.cos(d(lat2))*Math.sin(d(lon2-lon1)/2)**2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    // Toggle uses CSS class instead of inline styles to avoid overriding media queries
+    emergencyToggle.addEventListener('click', () => {
+        emergencyVisible = !emergencyVisible;
+        emergencyPanel.classList.toggle('content-collapsed', !emergencyVisible);
+        emergencyToggle.textContent = emergencyVisible ? 'Hide' : 'Show';
+    });
+
+    async function detectCountry(lat, lng) {
+        try {
+            const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`);
+            const data = await res.json();
+            return data.countryCode || null;
+        } catch (e) { return null; }
+    }
+
+    function showEmergencyNumbers(countryCode) {
+        const info = EMERGENCY_NUMBERS[countryCode.toUpperCase()];
+        if (!info) { emergencyPanel.classList.remove('visible'); return; }
+        emergencyPanel.classList.add('visible');
+        emergencyVisible = true;
+        emergencyToggle.textContent = 'Hide';
+        emergencyPanel.classList.remove('content-collapsed');
+
+        emergencyGrid.innerHTML = `
+            <div class="emergency-item"><a href="tel:${info.police}"><span class="num">${info.police}</span><span class="label">Police</span></a></div>
+            <div class="emergency-item"><a href="tel:${info.ambulance}"><span class="num">${info.ambulance}</span><span class="label">Ambulance</span></a></div>
+            <div class="emergency-item"><a href="tel:${info.fire}"><span class="num">${info.fire}</span><span class="label">Fire</span></a></div>`;
+        emergencySlider.innerHTML = `
+            <div class="emergency-slide"><a href="tel:${info.police}"><span class="num">${info.police}</span><span class="label">Police</span></a></div>
+            <div class="emergency-slide"><a href="tel:${info.ambulance}"><span class="num">${info.ambulance}</span><span class="label">Ambulance</span></a></div>
+            <div class="emergency-slide"><a href="tel:${info.fire}"><span class="num">${info.fire}</span><span class="label">Fire</span></a></div>
+            <div class="emergency-slide"><a href="tel:${info.emergency}"><span class="num">${info.emergency}</span><span class="label">Emergency</span></a></div>`;
+    }
+
+    // Hours parser
+    const DAY_NAMES = ['su','mo','tu','we','th','fr','sa'];
+    function dayIndex(n){return DAY_NAMES.indexOf(n);}
+    function ruleAppliesToDay(rule, cd) {
+        if (!/(mo|tu|we|th|fr|sa|su)/.test(rule)) return true;
+        const re = /(mo|tu|we|th|fr|sa|su)(?:-(mo|tu|we|th|fr|sa|su))?/g; let m;
+        while ((m = re.exec(rule)) !== null) {
+            const s = dayIndex(m[1]), e = m[2] ? dayIndex(m[2]) : s;
+            if (s===-1||e===-1) continue;
+            if (s<=e){if(cd>=s&&cd<=e)return true;}else{if(cd>=s||cd<=e)return true;}
+        } return false;
+    }
+    function extractTimeRanges(rule) {
+        const r=[], re=/(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/g; let m;
+        while((m=re.exec(rule))!==null){const s=parseInt(m[1])*60+parseInt(m[2]),e=parseInt(m[3])*60+parseInt(m[4]);if(!isNaN(s)&&!isNaN(e))r.push([s,e]);}
+        return r;
+    }
+    function checkOpen(hoursStr) {
+        if (!hoursStr) return null;
+        const raw = hoursStr.trim(); if (raw === '24/7') return true;
+        const now = new Date(), cd = now.getDay(), ct = now.getHours()*60+now.getMinutes();
+        const rules = raw.split(/;\s*/); let hasToday = false;
+        for (let rule of rules) {
+            rule = rule.trim().toLowerCase().replace(/\s+/g,' '); if(!rule)continue;
+            if (!ruleAppliesToDay(rule, cd)) continue; hasToday = true;
+            if (/\b(off|closed)\b/.test(rule)) return false;
+            for (let [s,e] of extractTimeRanges(rule)) if (ct>=s && ct<=e) return true;
+        }
+        if (hasToday) return false; return null;
+    }
+
+    function displayPharmacies(list, centerPoint) {
+        const openOnly = document.getElementById('openOnly').checked;
+        const show = openOnly ? list.filter(p => p.isOpen === true) : list;
+        if (show.length === 0) {
+            setStatus(`Found ${list.length} pharmacies, none open now.`, 'error');
+            resultsEl.innerHTML = '<div class="empty-state"><p>No open pharmacies. Disable "Open now only" to see all.</p></div>';
+            return;
+        }
+        resultsEl.innerHTML = '';
+        show.forEach((p, i) => {
+            const cls = p.isOpen===true?'open':p.isOpen===false?'closed':'unknown';
+            const txt = p.isOpen===true?'Open':p.isOpen===false?'Closed':'Unknown';
+            const col = p.isOpen===true?'#16a34a':p.isOpen===false?'#dc2626':'#d97706';
+            const icon = L.divIcon({
+                html: `<div style="background:${col};width:26px;height:26px;border-radius:50%;border:2.5px solid white;box-shadow:0 2px 5px rgba(0,0,0,0.2);display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:11px;font-family:Inter,sans-serif;">${i+1}</div>`,
+                iconSize:[26,26], iconAnchor:[13,13]
+            });
+            const m = L.marker([p.lat,p.lon],{icon}).addTo(map);
+            m.bindPopup(`<b style="font-family:Inter,sans-serif;font-size:0.95rem">${p.name}</b><br><span style="color:${col};font-weight:600;font-size:0.85rem">${txt}</span><br><span style="color:#6b7280;font-size:0.8rem">${p.address}</span>${p.phone?'<br><span style="color:#0d9488;font-size:0.8rem">'+p.phone+'</span>':''}${p.hours?'<br><span style="color:#9ca3af;font-size:0.75rem;font-family:monospace">'+p.hours+'</span>':''}`);
+            markers.push(m);
+            const card = document.createElement('div'); card.className='pharmacy-card '+cls;
+            let distText=''; if(centerPoint){const d=getDist(centerPoint.lat,centerPoint.lng,p.lat,p.lon);distText=`<p class="distance">${d.toFixed(2)} km away</p>`;}
+            card.innerHTML = `<div class="card-header"><h4>${i+1}. ${p.name}</h4><span class="status-tag ${cls}">${txt}</span></div><div class="card-body">${distText}<p>${p.address}</p>${p.phone?'<p>'+p.phone+'</p>':''}${p.hours?'<p class="hours">'+p.hours+'</p>':''}</div>`;
+            card.onclick = () => { map.setView([p.lat,p.lon],17); m.openPopup(); };
+            resultsEl.appendChild(card);
+        });
+        setStatus(`${show.length} pharmacy${show.length!==1?'ies':'y'} found`, 'success');
+        if (markers.length>0) map.fitBounds(L.featureGroup(markers).getBounds().pad(0.1));
+    }
+
+    function processElements(elements, centerPoint) {
+        const list=[];
+        elements.forEach(el=>{
+            let lat,lon,tags=el.tags||{};
+            if(el.type==='node'){lat=el.lat;lon=el.lon;}else if(el.center){lat=el.center.lat;lon=el.center.lon;}else return;
+            const isOpen=checkOpen(tags.opening_hours);
+            const addr=[tags['addr:street'],tags['addr:housenumber'],tags['addr:postcode'],tags['addr:city']].filter(Boolean).join(' ')||'Address not available';
+            list.push({name:tags.name||tags['name:en']||'Unnamed Pharmacy',lat,lon,address:addr,phone:tags.phone||tags['contact:phone']||null,hours:tags.opening_hours||null,isOpen,dist:centerPoint?getDist(centerPoint.lat,centerPoint.lng,lat,lon):0});
+        });
+        list.sort((a,b)=>a.dist-b.dist); return list;
+    }
+
+    async function searchNearMe() {
+        if(!userLoc)return; const radius=parseInt(document.getElementById('radius').value);
+        setStatus('Searching nearby...','loading'); btn.disabled=true; showAllBtn.disabled=true;
+        const cc=await detectCountry(userLoc.lat,userLoc.lng); if(cc)showEmergencyNumbers(cc);
+        const query=`[out:json][timeout:25];(nwr["amenity"="pharmacy"](around:${radius},${userLoc.lat},${userLoc.lng}););out center tags;`;
+        try {
+            const res=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:query,headers:{'Content-Type':'application/x-www-form-urlencoded'}});
+            const data=await res.json();
+            if(!data.elements||data.elements.length===0){setStatus('No pharmacies found. Try a larger radius.','error');resultsEl.innerHTML='<div class="empty-state"><p>No pharmacies found in this area.</p></div>';clearMarkers();return;}
+            clearMarkers(); const list=processElements(data.elements,userLoc); displayPharmacies(list,userLoc);
+        }catch(err){console.error(err);setStatus('Error loading data. Try again.','error');}
+        btn.disabled=false; showAllBtn.disabled=false;
+    }
+
+    async function showAllInView() {
+        const bounds=map.getBounds(), sw=bounds.getSouthWest(), ne=bounds.getNorthEast();
+        const area=Math.abs(ne.lat-sw.lat)*Math.abs(ne.lng-sw.lng);
+        if(area>5){setStatus('Area too large. Zoom in closer.','error');return;}
+        setStatus('Loading pharmacies in view...','loading'); btn.disabled=true; showAllBtn.disabled=true;
+        const cc=await detectCountry((sw.lat+ne.lat)/2,(sw.lng+ne.lng)/2); if(cc)showEmergencyNumbers(cc);
+        const query=`[out:json][timeout:30];(nwr["amenity"="pharmacy"](${sw.lat},${sw.lng},${ne.lat},${ne.lng}););out center tags;`;
+        try {
+            const res=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:query,headers:{'Content-Type':'application/x-www-form-urlencoded'}});
+            const data=await res.json();
+            if(!data.elements||data.elements.length===0){setStatus('No pharmacies in this area.','error');resultsEl.innerHTML='<div class="empty-state"><p>No pharmacies visible. Try panning to a city.</p></div>';clearMarkers();return;}
+            clearMarkers(); const list=processElements(data.elements,null); list.sort((a,b)=>a.name.localeCompare(b.name)); displayPharmacies(list,null);
+        }catch(err){console.error(err);setStatus('Error loading data. Area may be too large.','error');}
+        btn.disabled=false; showAllBtn.disabled=false;
+    }
+
+    btn.addEventListener('click',()=>{
+        if(!navigator.geolocation){setStatus('Geolocation not supported.','error');return;}
+        currentMode='location'; modeIndicator.textContent='Search near my location';
+        setStatus('Getting your location...','loading'); btn.disabled=true;
+        navigator.geolocation.getCurrentPosition(pos=>{
+            userLoc={lat:pos.coords.latitude,lng:pos.coords.longitude}; map.setView([userLoc.lat,userLoc.lng],14);
+            L.circleMarker([userLoc.lat,userLoc.lng],{radius:9,fillColor:'#0d9488',color:'white',weight:2.5,fillOpacity:1}).addTo(map).bindPopup('You are here').openPopup();
+            searchNearMe();
+        },err=>{setStatus('Location denied. Enable location permissions.','error');btn.disabled=false;},{enableHighAccuracy:true,timeout:15000});
+    });
+    showAllBtn.addEventListener('click',()=>{currentMode='viewport';modeIndicator.textContent='Show all in map view';showAllInView();});
+    document.getElementById('openOnly').addEventListener('change',()=>{if(currentMode==='location'&&userLoc)searchNearMe();else if(currentMode==='viewport')showAllInView();});
+    document.getElementById('radius').addEventListener('change',()=>{if(currentMode==='location'&&userLoc)searchNearMe();});
+</script>
+</body>
+</html>
