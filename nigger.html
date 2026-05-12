@@ -1,0 +1,1487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Locpharma — Pharmacy & Emergency Finder</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #0d9488; --accent-dark: #0f766e; --accent-light: #ccfbf1;
+            --danger: #dc2626; --danger-light: #fef2f2;
+            --success: #16a34a; --success-light: #f0fdf4;
+            --warn: #d97706; --warn-light: #fffbeb;
+            --text: #1f2937; --text-secondary: #6b7280; --text-muted: #9ca3af;
+            --bg: #f8fafc; --bg-white: #ffffff; --border: #e5e7eb;
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            --radius: 12px; --radius-sm: 8px; --radius-xs: 6px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; color: var(--text); overflow: hidden; -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; }
+
+        button, a, input, select, textarea, .btn, .fab-btn, .mobile-nav-btn, .emergency-toggle, .emergency-item, .contact-btn, .btn-modal, .contact-close {
+            outline: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        button:focus, button:focus-visible,
+        a:focus, a:focus-visible,
+        input:focus, input:focus-visible,
+        select:focus, select:focus-visible,
+        .btn:focus, .fab-btn:focus, .mobile-nav-btn:focus,
+        .emergency-toggle:focus, .contact-btn:focus, .btn-modal:focus {
+            outline: none;
+            box-shadow: none;
+        }
+        button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+
+        /* ===== TERMS MODAL ===== */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.6); backdrop-filter: blur(4px); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .modal-box { background: var(--bg-white); border-radius: 16px; max-width: 560px; width: 100%; max-height: 88vh; overflow-y: auto; box-shadow: var(--shadow-lg); border: 1px solid var(--border); animation: modalIn 0.25s cubic-bezier(0.16,1,0.3,1); }
+        @keyframes modalIn { from { opacity: 0; transform: scale(0.96) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        .modal-header { padding: 28px 28px 0; }
+        .modal-header h2 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.02em; }
+        .modal-header p { font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px; }
+        .modal-body { padding: 20px 28px; }
+        .term-block { margin-bottom: 18px; }
+        .term-block h3 { font-size: 0.85rem; font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+        .term-block h3 .num { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-light); color: var(--accent-dark); font-size: 0.75rem; font-weight: 700; flex-shrink: 0; }
+        .term-block p { font-size: 0.8rem; line-height: 1.7; color: var(--text-secondary); }
+        .modal-footer { padding: 16px 28px 28px; display: flex; gap: 10px; border-top: 1px solid var(--border); position: sticky; bottom: 0; background: var(--bg-white); }
+        .btn-modal { flex: 1; padding: 12px 16px; border-radius: var(--radius-sm); font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.15s; border: none; }
+        .btn-modal.primary { background: var(--accent); color: white; }
+        .btn-modal.primary:hover { background: var(--accent-dark); }
+        .btn-modal.primary:active { transform: scale(0.98); }
+        .btn-modal.secondary { background: var(--bg); color: var(--text-secondary); border: 1px solid var(--border); }
+        .btn-modal.secondary:hover { background: var(--border); color: var(--text); }
+        .btn-modal.secondary:active { transform: scale(0.98); }
+
+        /* ===== MAIN APP ===== */
+        .app { display: flex; height: 100vh; width: 100vw; position: relative; }
+        #map { flex: 1; height: 100%; background: #e2e8f0; z-index: 1; }
+
+        /* ===== DESKTOP SIDEBAR ===== */
+        .sidebar-desktop {
+            width: 400px; height: 100%; background: var(--bg-white);
+            display: flex; flex-direction: column; border-left: 1px solid var(--border);
+            z-index: 2;
+        }
+        .sidebar-desktop .sidebar-header { padding: 18px 18px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+        .sidebar-desktop .sidebar-header .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+        .sidebar-desktop .brand-icon { width: 34px; height: 34px; border-radius: var(--radius-sm); background: var(--accent); display: flex; align-items: center; justify-content: center; color: white; font-size: 1.1rem; font-weight: 700; }
+        .sidebar-desktop .brand-text h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; }
+        .sidebar-desktop .brand-text span { font-size: 0.72rem; color: var(--text-muted); font-weight: 500; }
+        .sidebar-desktop .search-controls { display: flex; gap: 8px; margin-bottom: 10px; }
+        .sidebar-desktop .search-controls .btn { flex: 1; padding: 9px 12px; border-radius: var(--radius-sm); border: none; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+        .btn-main { background: var(--accent); color: white; }
+        .btn-main:hover { background: var(--accent-dark); }
+        .btn-main:active { transform: scale(0.98); }
+        .btn-alt { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+        .btn-alt:hover { background: var(--border); }
+        .btn-alt:active { transform: scale(0.98); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .sidebar-desktop .filter-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .sidebar-desktop .filter-bar label { font-size: 0.78rem; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 500; }
+        .sidebar-desktop .filter-bar input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+        .sidebar-desktop .filter-bar select { padding: 5px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-white); font-size: 0.78rem; color: var(--text); cursor: pointer; font-family: inherit; }
+        .sidebar-desktop .mode-pill { padding: 5px 20px; font-size: 0.68rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; text-align: center; border-bottom: 1px solid var(--border); flex-shrink: 0; background: var(--bg); }
+
+        .sidebar-desktop .emergency-strip { background: var(--danger-light); border-bottom: 1px solid #fecaca; flex-shrink: 0; padding: 10px 18px; display: none; }
+        .sidebar-desktop .emergency-strip.visible { display: block; }
+        .sidebar-desktop .emergency-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .sidebar-desktop .emergency-top h3 { font-size: 0.78rem; font-weight: 700; color: var(--danger); display: flex; align-items: center; gap: 6px; }
+        .sidebar-desktop .emergency-toggle { font-size: 0.7rem; font-weight: 600; color: var(--danger); background: transparent; border: none; cursor: pointer; padding: 3px 8px; border-radius: 4px; }
+        .sidebar-desktop .emergency-toggle:hover { background: #fecaca; }
+        .sidebar-desktop .emergency-toggle:active { transform: scale(0.95); }
+        .sidebar-desktop .emergency-strip.collapsed .emergency-content { display: none; }
+        .sidebar-desktop .emergency-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        .sidebar-desktop .emergency-item { background: white; border: 1px solid #fecaca; border-radius: var(--radius-sm); padding: 8px; text-align: center; transition: all 0.15s; }
+        .sidebar-desktop .emergency-item:hover { border-color: var(--danger); box-shadow: var(--shadow-sm); }
+        .sidebar-desktop .emergency-item:active { transform: scale(0.97); }
+        .sidebar-desktop .emergency-item a { text-decoration: none; color: inherit; display: block; }
+        .sidebar-desktop .emergency-item .num { font-size: 1.05rem; font-weight: 700; color: var(--danger); display: block; line-height: 1.2; }
+        .sidebar-desktop .emergency-item .label { font-size: 0.68rem; color: var(--text-secondary); font-weight: 500; margin-top: 2px; display: block; }
+
+        .sidebar-desktop .status-bar { padding: 8px 18px; font-size: 0.78rem; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 6px; flex-shrink: 0; min-height: 36px; }
+        .sidebar-desktop .status-bar.info { background: #eff6ff; color: #1e40af; }
+        .sidebar-desktop .status-bar.loading { background: #fffbeb; color: #92400e; }
+        .sidebar-desktop .status-bar.success { background: var(--success-light); color: #166534; }
+        .sidebar-desktop .status-bar.error { background: var(--danger-light); color: #991b1b; }
+
+        .sidebar-desktop .results { flex: 1; overflow-y: auto; padding: 10px 18px; min-height: 0; background: var(--bg); }
+        .sidebar-desktop .sidebar-footer { padding: 8px 18px; border-top: 1px solid var(--border); background: var(--bg-white); display: flex; gap: 14px; justify-content: center; flex-shrink: 0; }
+        .sidebar-desktop .sidebar-footer span { font-size: 0.68rem; color: var(--text-muted); display: inline-flex; align-items: center; gap: 5px; }
+        .sidebar-desktop .sidebar-footer .dot { width: 7px; height: 7px; border-radius: 50%; display: block; flex-shrink: 0; }
+        .dot.open { background: var(--success); }
+        .dot.closed { background: var(--danger); }
+        .dot.unknown { background: var(--warn); }
+
+        /* ===== SHARED CARD STYLES ===== */
+        .pharmacy-card {
+            background: var(--bg-white);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 14px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.15s;
+            position: relative;
+            overflow: hidden;
+        }
+        .pharmacy-card::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 0; bottom: 0;
+            width: 3px;
+            background: var(--border);
+            transition: background 0.15s;
+        }
+        .pharmacy-card:hover { box-shadow: var(--shadow); border-color: #d1d5db; }
+        .pharmacy-card:hover::before { width: 4px; }
+        .pharmacy-card:active { transform: scale(0.995); }
+        .pharmacy-card.open::before { background: var(--success); }
+        .pharmacy-card.closed::before { background: var(--danger); }
+        .pharmacy-card.unknown::before { background: var(--warn); }
+        .card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+        .card-header h4 { font-size: 0.9rem; font-weight: 600; line-height: 1.3; flex: 1; }
+        .status-tag {
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            padding: 3px 8px;
+            border-radius: 999px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .status-tag.open { background: var(--success-light); color: var(--success); }
+        .status-tag.closed { background: var(--danger-light); color: var(--danger); }
+        .status-tag.unknown { background: var(--warn-light); color: var(--warn); }
+        .card-body p { font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5; margin: 2px 0; }
+        .card-body .distance { color: var(--accent); font-weight: 600; }
+        .card-body .hours { font-family: 'SF Mono', Monaco, monospace; font-size: 0.75rem; color: var(--text-muted); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+        .card-nav-btn {
+            margin-top: 10px;
+            width: 100%;
+            padding: 8px 12px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--accent);
+            background: var(--accent);
+            color: white;
+            font-size: 0.78rem;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .card-nav-btn:hover { background: var(--accent-dark); }
+        .card-nav-btn:active { transform: scale(0.98); }
+        .empty-state { text-align: center; padding: 48px 20px; color: var(--text-muted); }
+        .empty-state svg { width: 36px; height: 36px; margin-bottom: 10px; opacity: 0.4; }
+        .empty-state p { font-size: 0.85rem; }
+
+        /* ===== MOBILE LIST VIEW ===== */
+        .mobile-list-view {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            bottom: 56px;
+            background: var(--bg);
+            z-index: 5;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .mobile-list-view.active { display: flex; }
+        .mobile-list-header {
+            background: var(--bg-white); border-bottom: 1px solid var(--border);
+            padding: 14px 16px; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .mobile-list-header h2 { font-size: 1.1rem; font-weight: 700; }
+        .mobile-list-header .count {
+            font-size: 0.75rem; font-weight: 600; color: var(--accent);
+            background: var(--accent-light); padding: 4px 10px; border-radius: 999px;
+        }
+
+        .mobile-filters {
+            background: var(--bg-white);
+            border-bottom: 1px solid var(--border);
+            padding: 10px 16px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .mobile-filters label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .mobile-filters input[type="checkbox"] {
+            width: 16px; height: 16px;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+        .mobile-filters select {
+            padding: 5px 8px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: var(--bg-white);
+            font-size: 0.8rem;
+            color: var(--text);
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        .mobile-emergency {
+            background: var(--danger-light);
+            border-bottom: 1px solid #fecaca;
+            flex-shrink: 0;
+            display: none;
+        }
+        .mobile-emergency.visible { display: block; }
+        .mobile-emergency-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 16px;
+        }
+        .mobile-emergency-top h3 {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: var(--danger);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .mobile-emergency-toggle {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--danger);
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            padding: 3px 8px;
+            border-radius: 4px;
+        }
+        .mobile-emergency-toggle:hover { background: #fecaca; }
+        .mobile-emergency-toggle:active { transform: scale(0.95); }
+        .mobile-emergency.collapsed .mobile-emergency-content { display: none; }
+        .mobile-emergency-slider {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding: 0 16px 10px;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+        .mobile-emergency-slider::-webkit-scrollbar { display: none; }
+        .mobile-emergency-slide {
+            flex: 0 0 auto;
+            background: white;
+            border: 1px solid #fecaca;
+            border-radius: var(--radius-sm);
+            padding: 10px 16px;
+            text-align: center;
+            min-width: 80px;
+        }
+        .mobile-emergency-slide a { text-decoration: none; color: inherit; }
+        .mobile-emergency-slide .num { font-size: 1.2rem; font-weight: 700; color: var(--danger); display: block; }
+        .mobile-emergency-slide .label { font-size: 0.7rem; color: var(--text-secondary); font-weight: 500; }
+
+        .mobile-status {
+            padding: 6px 16px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            flex-shrink: 0;
+            min-height: 32px;
+        }
+        .mobile-status.info { background: #eff6ff; color: #1e40af; }
+        .mobile-status.loading { background: #fffbeb; color: #92400e; }
+        .mobile-status.success { background: var(--success-light); color: #166534; }
+        .mobile-status.error { background: var(--danger-light); color: #991b1b; }
+
+        .mobile-list-scroll { flex: 1; overflow-y: auto; padding: 10px 14px; }
+
+        /* ===== MOBILE MAP FAB ===== */
+        .map-fab {
+            display: none;
+            position: fixed;
+            bottom: 64px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 50;
+            flex-direction: column;
+            gap: 8px;
+            width: calc(100% - 32px);
+            max-width: 280px;
+            pointer-events: none;
+        }
+        .map-fab > * { pointer-events: auto; }
+        .fab-btn {
+            padding: 12px;
+            border-radius: var(--radius-sm);
+            border: none;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+            box-shadow: var(--shadow-lg);
+            font-family: inherit;
+        }
+        .fab-btn.main { background: var(--accent); color: white; }
+        .fab-btn.main:active { transform: scale(0.98); }
+        .fab-btn.alt { background: var(--bg-white); color: var(--text); border: 1px solid var(--border); }
+        .fab-btn.alt:active { transform: scale(0.98); }
+        .fab-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* ===== MOBILE BOTTOM NAV ===== */
+        .mobile-nav {
+            display: none;
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            background: var(--bg-white);
+            border-top: 1px solid var(--border);
+            z-index: 100;
+            padding: 6px 0;
+            justify-content: space-around;
+        }
+        .mobile-nav-btn {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 0.65rem;
+            font-weight: 500;
+            cursor: pointer;
+            padding: 4px 16px;
+            font-family: inherit;
+            transition: color 0.15s;
+        }
+        .mobile-nav-btn.active { color: var(--accent); }
+        .mobile-nav-btn svg { width: 20px; height: 20px; stroke-width: 2; }
+        .mobile-nav-btn:active { transform: scale(0.95); }
+        .nav-badge {
+            position: absolute;
+            top: 0; right: 6px;
+            background: var(--danger);
+            color: white;
+            font-size: 0.6rem;
+            font-weight: 700;
+            min-width: 16px;
+            height: 16px;
+            border-radius: 8px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 0 4px;
+        }
+
+        /* ===== CONTACT PAGE ===== */
+        .contact-page { display: none; position: fixed; inset: 0; background: var(--bg); z-index: 50; flex-direction: column; overflow-y: auto; }
+        .contact-page.active { display: flex; }
+        .contact-header { background: var(--bg-white); border-bottom: 1px solid var(--border); padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+        .contact-header h2 { font-size: 1.1rem; font-weight: 700; }
+        .contact-close { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text-secondary); padding: 4px; }
+        .contact-close:hover { color: var(--text); }
+        .contact-close:active { transform: scale(0.9); }
+        .contact-body { padding: 24px 20px; max-width: 600px; width: 100%; margin: 0 auto; }
+        .contact-card { background: var(--bg-white); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+        .contact-card h3 { font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+        .contact-item { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+        .contact-item:last-child { border-bottom: none; padding-bottom: 0; }
+        .contact-item:first-child { padding-top: 0; }
+        .contact-icon { width: 40px; height: 40px; border-radius: var(--radius-sm); background: var(--accent-light); display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: 1.1rem; flex-shrink: 0; }
+        .contact-icon.red { background: var(--danger-light); color: var(--danger); }
+        .contact-icon.green { background: var(--success-light); color: var(--success); }
+        .contact-info { flex: 1; }
+        .contact-info .label { font-size: 0.75rem; color: var(--text-muted); font-weight: 500; margin-bottom: 2px; }
+        .contact-info .value { font-size: 0.9rem; font-weight: 600; color: var(--text); }
+        .contact-info a { color: var(--accent); text-decoration: none; }
+        .contact-info a:hover { text-decoration: underline; }
+        .contact-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: var(--radius-sm); font-size: 0.78rem; font-weight: 600; text-decoration: none; transition: all 0.15s; border: none; cursor: pointer; }
+        .contact-btn.primary { background: var(--accent); color: white; }
+        .contact-btn.primary:hover { background: var(--accent-dark); }
+        .contact-btn.primary:active { transform: scale(0.98); }
+        .contact-btn.secondary { background: var(--success); color: white; }
+        .contact-btn.secondary:hover { background: #15803d; }
+        .contact-btn.secondary:active { transform: scale(0.98); }
+
+        /* ===== NAVIGATION TRACKING OVERLAY ===== */
+        .nav-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            z-index: 200;
+            background: var(--bg-white);
+            border-bottom: 1px solid var(--border);
+            box-shadow: var(--shadow-lg);
+            padding: 12px 16px;
+            animation: navSlideDown 0.3s ease-out;
+        }
+        .nav-overlay.active { display: block; }
+        @keyframes navSlideDown {
+            from { transform: translateY(-100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .nav-overlay-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .nav-overlay-header h3 {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .nav-overlay-header h3 .nav-icon {
+            width: 28px; height: 28px;
+            border-radius: 50%;
+            background: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.75rem;
+        }
+        .nav-stop-btn {
+            padding: 6px 14px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--danger);
+            background: var(--danger-light);
+            color: var(--danger);
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.15s;
+        }
+        .nav-stop-btn:hover { background: var(--danger); color: white; }
+        .nav-stop-btn:active { transform: scale(0.95); }
+        .nav-stats {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+        .nav-stat {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .nav-stat-label {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .nav-stat-value {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--accent);
+            line-height: 1.2;
+        }
+        .nav-stat-value.danger { color: var(--danger); }
+        .nav-stat-value.warn { color: var(--warn); }
+        .nav-stat-value.success { color: var(--success); }
+        .nav-speed-bar {
+            flex: 1;
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 4px;
+        }
+        .nav-speed-fill {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 2px;
+            transition: width 0.5s ease;
+        }
+        .nav-speed-fill.slow { background: var(--warn); }
+        .nav-speed-fill.fast { background: var(--success); }
+
+        /* Navigation route line styles */
+        .route-line { stroke: var(--accent); stroke-width: 5; stroke-opacity: 0.7; stroke-linecap: round; stroke-linejoin: round; }
+        .route-line-ghost { stroke: var(--accent); stroke-width: 8; stroke-opacity: 0.15; stroke-linecap: round; stroke-linejoin: round; }
+        .user-marker-pulse {
+            animation: pulseRing 2s ease-out infinite;
+        }
+        @keyframes pulseRing {
+            0% { transform: scale(1); opacity: 0.6; }
+            100% { transform: scale(2.5); opacity: 0; }
+        }
+
+        /* Navigation popup */
+        .nav-popup {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.85rem;
+        }
+        .nav-popup b { font-size: 0.95rem; }
+        .nav-popup .eta { color: var(--accent); font-weight: 600; }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 768px) {
+            .sidebar-desktop { display: none !important; }
+            .mobile-nav { display: flex; }
+            .nav-overlay { padding: 10px 14px; }
+            .nav-stats { gap: 12px; }
+            .nav-stat-value { font-size: 1rem; }
+        }
+        @media (min-width: 769px) {
+            .mobile-list-view { display: none !important; }
+            .mobile-nav { display: none !important; }
+            .map-fab { display: none !important; }
+        }
+        @media (max-width: 768px) and (orientation: landscape) {
+            .app { flex-direction: row; }
+            .sidebar-desktop { display: flex !important; width: 50%; }
+            .mobile-list-view { display: none !important; }
+            .mobile-nav { display: none !important; }
+            .map-fab { display: none !important; }
+        }
+    </style>
+<base target="_blank">
+</head>
+<body>
+
+<!-- TERMS MODAL -->
+<div class="modal-overlay" id="privacyModal">
+    <div class="modal-box">
+        <div class="modal-header"><h2>Terms of Use</h2><p>Please read carefully before using Locpharma</p></div>
+        <div class="modal-body">
+            <div class="term-block"><h3><span class="num">1</span> Informational Purpose Only</h3><p>Locpharma is provided solely for informational and reference purposes. All data, including pharmacy locations, operating hours, and emergency contact numbers, is sourced from publicly available databases and community contributions. We do not guarantee the accuracy, completeness, or real-time validity of any information displayed.</p></div>
+            <div class="term-block"><h3><span class="num">2</span> Verify Before Travelling</h3><p>We strongly advise contacting any pharmacy directly by telephone before visiting. Operating hours, medication availability, and services may change without notice. Locpharma accepts no liability for inconvenience, loss, or damages resulting from reliance on the information provided.</p></div>
+            <div class="term-block"><h3><span class="num">3</span> Emergency Numbers Coverage</h3><p>Our emergency number database covers numerous countries and territories but may not be exhaustive for every region worldwide. Emergency service numbers are subject to change by local authorities. In any emergency, dial the universal number <strong>112</strong> where available, or follow local emergency guidance.</p></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-modal secondary" id="exitBtn">Exit</button>
+            <button class="btn-modal primary" id="agreeBtn">Agree & Enter</button>
+        </div>
+    </div>
+</div>
+
+<!-- NAVIGATION TRACKING OVERLAY -->
+<div class="nav-overlay" id="navOverlay">
+    <div class="nav-overlay-header">
+        <h3><span class="nav-icon">&#x1F9EA;</span><span id="navTargetName">Heading to Pharmacy</span></h3>
+        <button class="nav-stop-btn" id="navStopBtn">&#x2715; Stop</button>
+    </div>
+    <div id="navRouteStatus" style="font-size:0.7rem;color:var(--text-muted);margin-bottom:4px;display:none;">
+        <span id="navRouteType">Calculating route...</span>
+    </div>
+    <div class="nav-stats">
+        <div class="nav-stat">
+            <span class="nav-stat-label">Distance</span>
+            <span class="nav-stat-value" id="navDistance">0 m</span>
+        </div>
+        <div class="nav-stat">
+            <span class="nav-stat-label">Time Left</span>
+            <span class="nav-stat-value" id="navTimeLeft">--</span>
+        </div>
+        <div class="nav-stat">
+            <span class="nav-stat-label">Speed</span>
+            <span class="nav-stat-value" id="navSpeed">0 km/h</span>
+            <div class="nav-speed-bar"><div class="nav-speed-fill" id="navSpeedBar" style="width:0%"></div></div>
+        </div>
+    </div>
+</div>
+
+<!-- CONTACT PAGE -->
+<div class="contact-page" id="contactPage">
+    <div class="contact-header"><h2>Contact Us</h2><button class="contact-close" id="contactClose">&times;</button></div>
+    <div class="contact-body">
+        <div class="contact-card">
+            <h3>Get in Touch</h3>
+            <div class="contact-item">
+                <div class="contact-icon">@</div>
+                <div class="contact-info"><div class="label">Email</div><div class="value"><a href="mailto:iyaddevworks@gmail.com">iyaddevworks@gmail.com</a></div></div>
+            </div>
+            <div class="contact-item">
+                <div class="contact-icon green">W</div>
+                <div class="contact-info"><div class="label">WhatsApp</div><div class="value">+212 6 34 34 00 71</div></div>
+                <a href="https://wa.me/212634340071" target="_blank" class="contact-btn secondary">Message</a>
+            </div>
+        </div>
+        <div class="contact-card">
+            <h3>About Locpharma</h3>
+            <p style="font-size:0.8rem;color:var(--text-secondary);line-height:1.6;">Locpharma helps you find nearby pharmacies and check their opening hours in real time. We also provide local emergency numbers based on your location. Built with care for travellers and residents alike.</p>
+        </div>
+    </div>
+</div>
+
+<!-- MAIN APP -->
+<div class="app" id="mainApp" style="display:none;">
+    <div id="map"></div>
+
+    <div class="map-fab" id="mapFab">
+        <button class="fab-btn main" id="fabLocate">Find Near Me</button>
+        <button class="fab-btn alt" id="fabShowAll">Show Map View</button>
+    </div>
+
+    <!-- DESKTOP SIDEBAR -->
+    <div class="sidebar-desktop" id="sidebarDesktop">
+        <div class="sidebar-header">
+            <div class="brand">
+                <div class="brand-icon">+</div>
+                <div class="brand-text"><h1>Locpharma</h1><span>Pharmacy & Emergency Finder</span></div>
+            </div>
+            <div class="search-controls">
+                <button class="btn btn-main" id="locateBtn">Find Near Me</button>
+                <button class="btn btn-alt" id="showAllBtn">Show Map View</button>
+            </div>
+            <div class="filter-bar">
+                <label><input type="checkbox" id="openOnlyDesktop" checked> Open now only</label>
+                <select id="radiusDesktop">
+                    <option value="1000">1 km</option>
+                    <option value="2000" selected>2 km</option>
+                    <option value="5000">5 km</option>
+                    <option value="10000">10 km</option>
+                </select>
+            </div>
+        </div>
+        <div class="mode-pill" id="modeIndicatorDesktop">Search near my location</div>
+        <div class="emergency-strip collapsed" id="emergencyPanelDesktop">
+            <div class="emergency-top">
+                <h3>Emergency Numbers</h3>
+                <button class="emergency-toggle" id="emergencyToggleDesktop">Show</button>
+            </div>
+            <div class="emergency-content">
+                <div class="emergency-grid" id="emergencyGridDesktop"></div>
+            </div>
+        </div>
+        <div class="status-bar info" id="statusDesktop">Click a button above to begin</div>
+        <div class="results" id="resultsDesktop"></div>
+        <div class="sidebar-footer">
+            <span><span class="dot open"></span> Open</span>
+            <span><span class="dot closed"></span> Closed</span>
+            <span><span class="dot unknown"></span> Unknown</span>
+        </div>
+    </div>
+</div>
+
+<!-- MOBILE LIST VIEW -->
+<div class="mobile-list-view" id="mobileListView">
+    <div class="mobile-list-header">
+        <h2>Pharmacies</h2>
+        <span class="count" id="mobileListCount">0 found</span>
+    </div>
+    <div class="mobile-filters">
+        <label><input type="checkbox" id="openOnlyMobile" checked> Open now only</label>
+        <select id="radiusMobile">
+            <option value="1000">1 km</option>
+            <option value="2000" selected>2 km</option>
+            <option value="5000">5 km</option>
+            <option value="10000">10 km</option>
+        </select>
+    </div>
+    <div class="mobile-emergency collapsed" id="emergencyPanelMobile">
+        <div class="mobile-emergency-top">
+            <h3>Emergency Numbers</h3>
+            <button class="mobile-emergency-toggle" id="emergencyToggleMobile">Show</button>
+        </div>
+        <div class="mobile-emergency-content">
+            <div class="mobile-emergency-slider" id="emergencySliderMobile"></div>
+        </div>
+    </div>
+    <div class="mobile-status info" id="statusMobile">Click a button above to begin</div>
+    <div class="mobile-list-scroll" id="mobileListScroll">
+        <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 6.75V15m6-6v8.25m.503 3.498l4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 00-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0z"/></svg>
+            <p>No results yet. Search from the Map tab.</p>
+        </div>
+    </div>
+</div>
+
+<!-- MOBILE BOTTOM NAV -->
+<div class="mobile-nav" id="mobileNav">
+    <button class="mobile-nav-btn active" id="navMap" data-view="map">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+        Map
+    </button>
+    <button class="mobile-nav-btn" id="navList" data-view="list">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+        List
+        <span class="nav-badge" id="listBadge">0</span>
+    </button>
+    <button class="mobile-nav-btn" id="navContact" data-view="contact">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+        Contact
+    </button>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    const EMERGENCY_NUMBERS = {
+        "AT":{country:"Austria",police:"133",ambulance:"144",fire:"122",emergency:"112"},
+        "BE":{country:"Belgium",police:"101",ambulance:"112",fire:"112",emergency:"112"},
+        "BG":{country:"Bulgaria",police:"166",ambulance:"150",fire:"160",emergency:"112"},
+        "HR":{country:"Croatia",police:"192",ambulance:"194",fire:"193",emergency:"112"},
+        "CY":{country:"Cyprus",police:"199",ambulance:"199",fire:"199",emergency:"112"},
+        "CZ":{country:"Czech Republic",police:"158",ambulance:"155",fire:"150",emergency:"112"},
+        "DK":{country:"Denmark",police:"114",ambulance:"112",fire:"112",emergency:"112"},
+        "EE":{country:"Estonia",police:"112",ambulance:"112",fire:"112",emergency:"112"},
+        "FI":{country:"Finland",police:"112",ambulance:"112",fire:"112",emergency:"112"},
+        "FR":{country:"France",police:"17",ambulance:"15",fire:"18",emergency:"112"},
+        "DE":{country:"Germany",police:"110",ambulance:"112",fire:"112",emergency:"112"},
+        "GR":{country:"Greece",police:"100",ambulance:"166",fire:"199",emergency:"112"},
+        "HU":{country:"Hungary",police:"107",ambulance:"104",fire:"105",emergency:"112"},
+        "IS":{country:"Iceland",police:"112",ambulance:"112",fire:"112",emergency:"112"},
+        "IE":{country:"Ireland",police:"999",ambulance:"999",fire:"999",emergency:"112"},
+        "IT":{country:"Italy",police:"113",ambulance:"118",fire:"115",emergency:"112"},
+        "LV":{country:"Latvia",police:"110",ambulance:"113",fire:"114",emergency:"112"},
+        "LT":{country:"Lithuania",police:"102",ambulance:"103",fire:"101",emergency:"112"},
+        "LU":{country:"Luxembourg",police:"113",ambulance:"112",fire:"112",emergency:"112"},
+        "MT":{country:"Malta",police:"191",ambulance:"196",fire:"199",emergency:"112"},
+        "NL":{country:"Netherlands",police:"112",ambulance:"112",fire:"112",emergency:"112"},
+        "NO":{country:"Norway",police:"112",ambulance:"113",fire:"110",emergency:"112"},
+        "PL":{country:"Poland",police:"997",ambulance:"999",fire:"998",emergency:"112"},
+        "PT":{country:"Portugal",police:"112",ambulance:"112",fire:"112",emergency:"112"},
+        "RO":{country:"Romania",police:"112",ambulance:"112",fire:"112",emergency:"112"},
+        "SK":{country:"Slovakia",police:"158",ambulance:"155",fire:"150",emergency:"112"},
+        "SI":{country:"Slovenia",police:"113",ambulance:"112",fire:"112",emergency:"112"},
+        "ES":{country:"Spain",police:"091",ambulance:"061",fire:"080",emergency:"112"},
+        "SE":{country:"Sweden",police:"112",ambulance:"112",fire:"112",emergency:"112"},
+        "CH":{country:"Switzerland",police:"117",ambulance:"144",fire:"118",emergency:"112"},
+        "GB":{country:"United Kingdom",police:"999",ambulance:"999",fire:"999",emergency:"112"},
+        "UK":{country:"United Kingdom",police:"999",ambulance:"999",fire:"999",emergency:"112"},
+        "US":{country:"United States",police:"911",ambulance:"911",fire:"911",emergency:"911"},
+        "CA":{country:"Canada",police:"911",ambulance:"911",fire:"911",emergency:"911"},
+        "MX":{country:"Mexico",police:"911",ambulance:"911",fire:"911",emergency:"911"},
+        "BR":{country:"Brazil",police:"190",ambulance:"192",fire:"193",emergency:"911"},
+        "AR":{country:"Argentina",police:"911",ambulance:"911",fire:"911",emergency:"911"},
+        "CL":{country:"Chile",police:"133",ambulance:"131",fire:"132",emergency:"911"},
+        "CO":{country:"Colombia",police:"123",ambulance:"123",fire:"123",emergency:"123"},
+        "PE":{country:"Peru",police:"105",ambulance:"116",fire:"116",emergency:"911"},
+        "VE":{country:"Venezuela",police:"911",ambulance:"911",fire:"911",emergency:"911"},
+        "CN":{country:"China",police:"110",ambulance:"120",fire:"119",emergency:"112"},
+        "JP":{country:"Japan",police:"110",ambulance:"119",fire:"119",emergency:"911"},
+        "KR":{country:"South Korea",police:"112",ambulance:"119",fire:"119",emergency:"112"},
+        "IN":{country:"India",police:"100",ambulance:"102",fire:"101",emergency:"112"},
+        "ID":{country:"Indonesia",police:"110",ambulance:"118",fire:"113",emergency:"112"},
+        "TH":{country:"Thailand",police:"191",ambulance:"1669",fire:"199",emergency:"911"},
+        "VN":{country:"Vietnam",police:"113",ambulance:"115",fire:"114",emergency:"112"},
+        "MY":{country:"Malaysia",police:"999",ambulance:"999",fire:"999",emergency:"999"},
+        "PH":{country:"Philippines",police:"117",ambulance:"117",fire:"117",emergency:"911"},
+        "SG":{country:"Singapore",police:"999",ambulance:"995",fire:"995",emergency:"999"},
+        "TW":{country:"Taiwan",police:"110",ambulance:"119",fire:"119",emergency:"112"},
+        "HK":{country:"Hong Kong",police:"999",ambulance:"999",fire:"999",emergency:"999"},
+        "TR":{country:"Turkey",police:"155",ambulance:"112",fire:"110",emergency:"112"},
+        "AE":{country:"UAE",police:"999",ambulance:"998",fire:"997",emergency:"999"},
+        "SA":{country:"Saudi Arabia",police:"999",ambulance:"997",fire:"998",emergency:"999"},
+        "IL":{country:"Israel",police:"100",ambulance:"101",fire:"102",emergency:"112"},
+        "AU":{country:"Australia",police:"000",ambulance:"000",fire:"000",emergency:"000"},
+        "NZ":{country:"New Zealand",police:"111",ambulance:"111",fire:"111",emergency:"111"},
+        "ZA":{country:"South Africa",police:"10111",ambulance:"10177",fire:"10177",emergency:"112"},
+        "EG":{country:"Egypt",police:"122",ambulance:"123",fire:"180",emergency:"112"},
+        "NG":{country:"Nigeria",police:"112",ambulance:"112",fire:"112",emergency:"112"},
+        "KE":{country:"Kenya",police:"999",ambulance:"999",fire:"999",emergency:"999"},
+        "MA":{country:"Morocco",police:"19",ambulance:"15",fire:"15",emergency:"112"},
+        "RU":{country:"Russia",police:"102",ambulance:"103",fire:"101",emergency:"112"},
+        "UA":{country:"Ukraine",police:"102",ambulance:"103",fire:"101",emergency:"112"},
+        "BY":{country:"Belarus",police:"102",ambulance:"103",fire:"101",emergency:"112"}
+    };
+
+    // ===== NAVIGATION TRACKING SYSTEM =====
+    const NavigationTracker = {
+        active: false,
+        targetPharmacy: null,
+        watchId: null,
+        routeLine: null,
+        routeGhost: null,
+        userMarker: null,
+        userPulse: null,
+        targetMarker: null,
+        lastPosition: null,
+        lastTimestamp: null,
+        speedHistory: [],
+        totalDistance: 0,
+        routePoints: [],
+        _lastRouteUpdate: 0,
+
+        init() {
+            document.getElementById('navStopBtn').addEventListener('click', () => this.stop());
+        },
+
+        start(pharmacy) {
+            if (this.active) this.stop();
+
+            this.targetPharmacy = pharmacy;
+            this.active = true;
+            this.totalDistance = 0;
+            this.speedHistory = [];
+            this.lastPosition = null;
+            this.lastTimestamp = null;
+            this.routePoints = [];
+            this._lastRouteUpdate = 0;
+
+            document.getElementById('navTargetName').textContent = 'Heading to ' + (pharmacy.name || 'Pharmacy');
+            document.getElementById('navOverlay').classList.add('active');
+
+            const targetIcon = L.divIcon({
+                html: '<div style="background:#dc2626;width:32px;height:32px;border-radius:50%;border:3px solid white;box-shadow:0 3px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:14px;">&#x1F3E5;</div>',
+                iconSize: [32, 32], iconAnchor: [16, 16]
+            });
+            this.targetMarker = L.marker([pharmacy.lat, pharmacy.lon], { icon: targetIcon, zIndexOffset: 1000 }).addTo(map);
+
+            this.drawRoute(pharmacy);
+
+            // Start GPS tracking (without non-standard `timeout` option)
+            if (navigator.geolocation) {
+                this.watchId = navigator.geolocation.watchPosition(
+                    (pos) => this.onPositionUpdate(pos),
+                    (err) => console.error('GPS error:', err),
+                    { enableHighAccuracy: true, maximumAge: 5000 }
+                );
+            }
+
+            if (userLoc) {
+                map.setView([userLoc.lat, userLoc.lng], 16);
+            }
+
+            this.updateDisplay();
+        },
+
+        drawRoute(pharmacy) {
+            if (this.routeLine) { map.removeLayer(this.routeLine); this.routeLine = null; }
+            if (this.routeGhost) { map.removeLayer(this.routeGhost); this.routeGhost = null; }
+            if (!userLoc) return;
+            this.fetchOSRMRoute(userLoc.lat, userLoc.lng, pharmacy.lat, pharmacy.lon);
+        },
+
+        async fetchOSRMRoute(fromLat, fromLng, toLat, toLng) {
+            try {
+                const proxies = [
+                    'https://api.allorigins.win/raw?url=',
+                    'https://corsproxy.io/?',
+                    'https://api.codetabs.com/v1/proxy?quest='
+                ];
+                const osrmUrl = encodeURIComponent('https://router.project-osrm.org/route/v1/foot/' + fromLng + ',' + fromLat + ';' + toLng + ',' + toLat + '?overview=full&geometries=geojson');
+
+                let data = null;
+                for (const proxy of proxies) {
+                    try {
+                        const res = await fetch(proxy + osrmUrl);
+                        if (res.ok) {
+                            data = await res.json();
+                            if (data && data.routes && data.routes[0]) break;
+                        }
+                    } catch (e) { /* try next proxy */ }
+                }
+
+                if (!data || !data.routes || !data.routes[0]) {
+                    // Fallback: try direct request (may fail due to CORS)
+                    try {
+                        const res = await fetch('https://router.project-osrm.org/route/v1/foot/' + fromLng + ',' + fromLat + ';' + toLng + ',' + toLat + '?overview=full&geometries=geojson', { mode: 'no-cors' });
+                    } catch (e) {}
+                }
+
+                if (data && data.routes && data.routes[0]) {
+                    const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+                    this.routePoints = coords;
+
+                    if (this.routeGhost) map.removeLayer(this.routeGhost);
+                    if (this.routeLine) map.removeLayer(this.routeLine);
+
+                    this.routeGhost = L.polyline(coords, { 
+                        className: 'route-line-ghost',
+                        interactive: false 
+                    }).addTo(map);
+
+                    this.routeLine = L.polyline(coords, { 
+                        className: 'route-line',
+                        interactive: false 
+                    }).addTo(map);
+
+                    this.totalDistance = data.routes[0].distance;
+                    const rtType = document.getElementById('navRouteType');
+                    if(rtType) rtType.textContent = 'Walking route via OSRM';
+                    const rtStatus = document.getElementById('navRouteStatus');
+                    if(rtStatus) rtStatus.style.display = 'block';
+                } else {
+                    this.drawStraightLine(fromLat, fromLng, toLat, toLng);
+                }
+            } catch (e) {
+                this.drawStraightLine(fromLat, fromLng, toLat, toLng);
+            }
+        },
+
+        drawStraightLine(fromLat, fromLng, toLat, toLng) {
+            const coords = [[fromLat, fromLng], [toLat, toLng]];
+            this.routePoints = coords;
+
+            if (this.routeGhost) map.removeLayer(this.routeGhost);
+            if (this.routeLine) map.removeLayer(this.routeLine);
+
+            this.routeGhost = L.polyline(coords, { 
+                className: 'route-line-ghost',
+                interactive: false 
+            }).addTo(map);
+
+            this.routeLine = L.polyline(coords, { 
+                className: 'route-line',
+                interactive: false 
+            }).addTo(map);
+
+            this.totalDistance = getDist(fromLat, fromLng, toLat, toLng) * 1000;
+        },
+
+        onPositionUpdate(position) {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const timestamp = position.timestamp;
+
+            userLoc = { lat, lng };
+
+            if (this.userMarker) {
+                this.userMarker.setLatLng([lat, lng]);
+            } else {
+                const userIcon = L.divIcon({
+                    html: '<div style="position:relative;width:20px;height:20px;"><div style="width:20px;height:20px;border-radius:50%;background:#0d9488;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);position:relative;z-index:2;"></div><div class="user-marker-pulse" style="position:absolute;top:50%;left:50%;width:20px;height:20px;margin-top:-10px;margin-left:-10px;border-radius:50%;background:#0d9488;z-index:1;"></div></div>',
+                    iconSize: [20, 20], iconAnchor: [10, 10], className: ''
+                });
+                this.userMarker = L.marker([lat, lng], { icon: userIcon, zIndexOffset: 2000 }).addTo(map);
+            }
+
+            let speedKmh = 0;
+            if (this.lastPosition && this.lastTimestamp) {
+                const dist = getDist(this.lastPosition.lat, this.lastPosition.lng, lat, lng) * 1000;
+                const timeDiff = (timestamp - this.lastTimestamp) / 1000;
+
+                if (timeDiff > 0 && dist > 0.5) {
+                    const speedMs = dist / timeDiff;
+                    speedKmh = speedMs * 3.6;
+
+                    this.speedHistory.push(speedKmh);
+                    if (this.speedHistory.length > 5) this.speedHistory.shift();
+                    speedKmh = this.speedHistory.reduce((a, b) => a + b, 0) / this.speedHistory.length;
+                }
+            }
+
+            this.lastPosition = { lat, lng };
+            this.lastTimestamp = timestamp;
+
+            if (this.targetPharmacy) {
+                const distToTarget = getDist(lat, lng, this.targetPharmacy.lat, this.targetPharmacy.lon);
+                if (!this._lastRouteUpdate || (timestamp - this._lastRouteUpdate > 30000) || distToTarget > 0.05) {
+                    this.fetchOSRMRoute(lat, lng, this.targetPharmacy.lat, this.targetPharmacy.lon);
+                    this._lastRouteUpdate = timestamp;
+                }
+            }
+
+            this.updateDisplay(speedKmh);
+
+            if (this.active && map) {
+                map.panTo([lat, lng], { animate: true, duration: 0.5 });
+            }
+
+            if (this.targetPharmacy) {
+                const remaining = getDist(lat, lng, this.targetPharmacy.lat, this.targetPharmacy.lon);
+                if (remaining < 0.02) {
+                    this.onArrived();
+                }
+            }
+        },
+
+        updateDisplay(speedKmh) {
+            if (!this.targetPharmacy || !userLoc) return;
+
+            const remainingDist = getDist(userLoc.lat, userLoc.lng, this.targetPharmacy.lat, this.targetPharmacy.lon) * 1000;
+
+            let distText;
+            if (remainingDist >= 1000) {
+                distText = (remainingDist / 1000).toFixed(2) + ' km';
+            } else {
+                distText = Math.round(remainingDist) + ' m';
+            }
+            document.getElementById('navDistance').textContent = distText;
+
+            let timeText = '--';
+            const timeEl = document.getElementById('navTimeLeft');
+            if (speedKmh > 0.5) {
+                const hours = (remainingDist / 1000) / speedKmh;
+                const minutes = Math.ceil(hours * 60);
+                if (minutes < 1) {
+                    timeText = '< 1 min';
+                } else if (minutes < 60) {
+                    timeText = minutes + ' min';
+                } else {
+                    const h = Math.floor(minutes / 60);
+                    const m = minutes % 60;
+                    timeText = h + 'h ' + (m > 0 ? m + 'm' : '');
+                }
+                timeEl.className = 'nav-stat-value';
+            } else {
+                timeText = 'Walking...';
+                timeEl.className = 'nav-stat-value warn';
+            }
+            timeEl.textContent = timeText;
+
+            document.getElementById('navSpeed').textContent = (speedKmh || 0).toFixed(1) + ' km/h';
+
+            const speedPercent = Math.min((speedKmh / 15) * 100, 100);
+            const speedBar = document.getElementById('navSpeedBar');
+            speedBar.style.width = speedPercent + '%';
+
+            if (speedKmh < 2) {
+                speedBar.className = 'nav-speed-fill slow';
+            } else if (speedKmh > 8) {
+                speedBar.className = 'nav-speed-fill fast';
+            } else {
+                speedBar.className = 'nav-speed-fill';
+            }
+        },
+
+        onArrived() {
+            document.getElementById('navDistance').textContent = '0 m';
+            const timeEl = document.getElementById('navTimeLeft');
+            timeEl.textContent = 'Arrived!';
+            timeEl.className = 'nav-stat-value success';
+
+            if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+
+            if (this.targetMarker) {
+                this.targetMarker.bindPopup(
+                    '<div class="nav-popup"><b>&#x1F389; You have arrived!</b><br><span style="color:#16a34a;font-weight:600;">' + (this.targetPharmacy.name || 'Pharmacy') + '</span><br><span style="color:#6b7280;font-size:0.8rem;">' + (this.targetPharmacy.address || '') + '</span></div>'
+                ).openPopup();
+            }
+
+            setTimeout(() => this.stop(), 10000);
+        },
+
+        stop() {
+            this.active = false;
+            document.getElementById('navOverlay').classList.remove('active');
+
+            if (this.watchId !== null) {
+                navigator.geolocation.clearWatch(this.watchId);
+                this.watchId = null;
+            }
+
+            if (this.routeLine) { map.removeLayer(this.routeLine); this.routeLine = null; }
+            if (this.routeGhost) { map.removeLayer(this.routeGhost); this.routeGhost = null; }
+            if (this.userMarker) { map.removeLayer(this.userMarker); this.userMarker = null; }
+            if (this.targetMarker) { map.removeLayer(this.targetMarker); this.targetMarker = null; }
+
+            this.targetPharmacy = null;
+            this.lastPosition = null;
+            this.lastTimestamp = null;
+            this.speedHistory = [];
+            this.routePoints = [];
+        }
+    };
+
+    NavigationTracker.init();
+
+    // Modal
+    const privacyModal = document.getElementById('privacyModal');
+    const mainApp = document.getElementById('mainApp');
+    document.getElementById('agreeBtn').addEventListener('click', () => {
+        privacyModal.style.display = 'none';
+        mainApp.style.display = 'flex';
+        if (window.innerWidth <= 768) {
+            setMobileView('map');
+        }
+        setTimeout(() => map.invalidateSize(), 100);
+    });
+    document.getElementById('exitBtn').addEventListener('click', () => {
+        window.close();
+        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#64748b;"><p>You may close this tab.</p></div>';
+    });
+
+    // Contact page
+    const contactPage = document.getElementById('contactPage');
+    document.getElementById('contactClose').addEventListener('click', () => {
+        contactPage.classList.remove('active');
+        setMobileView('map');
+    });
+
+    // Mobile nav
+    const navMap = document.getElementById('navMap');
+    const navList = document.getElementById('navList');
+    const navContact = document.getElementById('navContact');
+    const listBadge = document.getElementById('listBadge');
+    const mobileListView = document.getElementById('mobileListView');
+    const mapFab = document.getElementById('mapFab');
+
+    function setMobileView(view) {
+        document.querySelectorAll('.mobile-nav-btn').forEach(b => b.classList.remove('active'));
+        const navId = 'nav' + view.charAt(0).toUpperCase() + view.slice(1);
+        const btn = document.getElementById(navId);
+        if (btn) btn.classList.add('active');
+
+        if (view === 'map') {
+            mobileListView.classList.remove('active');
+            contactPage.classList.remove('active');
+            mapFab.style.display = 'flex';
+            setTimeout(() => map.invalidateSize(), 100);
+        } else if (view === 'list') {
+            mobileListView.classList.add('active');
+            contactPage.classList.remove('active');
+            mapFab.style.display = 'none';
+            updateListBadge(0);
+        } else if (view === 'contact') {
+            mobileListView.classList.remove('active');
+            contactPage.classList.add('active');
+            mapFab.style.display = 'none';
+        }
+    }
+
+    navMap.addEventListener('click', () => setMobileView('map'));
+    navList.addEventListener('click', () => setMobileView('list'));
+    navContact.addEventListener('click', () => setMobileView('contact'));
+
+    function updateListBadge(count) {
+        if (count > 0) {
+            listBadge.textContent = count > 99 ? '99+' : count;
+            listBadge.style.display = 'flex';
+        } else {
+            listBadge.style.display = 'none';
+        }
+    }
+
+    // Map
+    const map = L.map('map').setView([51.505, -0.09], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19, attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    let userLoc = null, markers = [], currentMode = 'location', emergencyVisibleDesktop = false, emergencyVisibleMobile = false;
+
+    // Desktop refs
+    const statusDesktop = document.getElementById('statusDesktop');
+    const resultsDesktop = document.getElementById('resultsDesktop');
+    const btnDesktop = document.getElementById('locateBtn');
+    const showAllBtnDesktop = document.getElementById('showAllBtn');
+    const modeIndicatorDesktop = document.getElementById('modeIndicatorDesktop');
+    const emergencyPanelDesktop = document.getElementById('emergencyPanelDesktop');
+    const emergencyGridDesktop = document.getElementById('emergencyGridDesktop');
+    const emergencyToggleDesktop = document.getElementById('emergencyToggleDesktop');
+    const openOnlyDesktop = document.getElementById('openOnlyDesktop');
+    const radiusDesktop = document.getElementById('radiusDesktop');
+
+    // Mobile refs
+    const statusMobile = document.getElementById('statusMobile');
+    const mobileListScroll = document.getElementById('mobileListScroll');
+    const mobileListCount = document.getElementById('mobileListCount');
+    const fabLocate = document.getElementById('fabLocate');
+    const fabShowAll = document.getElementById('fabShowAll');
+    const openOnlyMobile = document.getElementById('openOnlyMobile');
+    const radiusMobile = document.getElementById('radiusMobile');
+    const emergencyPanelMobile = document.getElementById('emergencyPanelMobile');
+    const emergencySliderMobile = document.getElementById('emergencySliderMobile');
+    const emergencyToggleMobile = document.getElementById('emergencyToggleMobile');
+
+    function setStatus(msg, type) {
+        statusDesktop.textContent = msg;
+        statusDesktop.className = 'status-bar ' + type;
+        statusMobile.textContent = msg;
+        statusMobile.className = 'mobile-status ' + type;
+    }
+    function clearMarkers() { markers.forEach(m => map.removeLayer(m)); markers = []; }
+    function getDist(lat1, lon1, lat2, lon2) {
+        const R = 6371, d = a => a * Math.PI / 180;
+        const a = Math.sin(d(lat2-lat1)/2)**2 + Math.cos(d(lat1))*Math.cos(d(lat2))*Math.sin(d(lon2-lon1)/2)**2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    // Emergency toggles
+    emergencyPanelDesktop.classList.add('collapsed');
+    emergencyToggleDesktop.addEventListener('click', () => {
+        emergencyVisibleDesktop = !emergencyVisibleDesktop;
+        emergencyPanelDesktop.classList.toggle('collapsed', !emergencyVisibleDesktop);
+        emergencyToggleDesktop.textContent = emergencyVisibleDesktop ? 'Hide' : 'Show';
+    });
+
+    emergencyPanelMobile.classList.add('collapsed');
+    emergencyToggleMobile.addEventListener('click', () => {
+        emergencyVisibleMobile = !emergencyVisibleMobile;
+        emergencyPanelMobile.classList.toggle('collapsed', !emergencyVisibleMobile);
+        emergencyToggleMobile.textContent = emergencyVisibleMobile ? 'Hide' : 'Show';
+    });
+
+    // Sync mobile/desktop filters
+    openOnlyMobile.addEventListener('change', () => {
+        openOnlyDesktop.checked = openOnlyMobile.checked;
+        if(currentMode==='location'&&userLoc) searchNearMe();
+        else if(currentMode==='viewport') showAllInView();
+    });
+    openOnlyDesktop.addEventListener('change', () => {
+        openOnlyMobile.checked = openOnlyDesktop.checked;
+        if(currentMode==='location'&&userLoc) searchNearMe();
+        else if(currentMode==='viewport') showAllInView();
+    });
+    radiusMobile.addEventListener('change', () => {
+        radiusDesktop.value = radiusMobile.value;
+        if(currentMode==='location'&&userLoc) searchNearMe();
+    });
+    radiusDesktop.addEventListener('change', () => {
+        radiusMobile.value = radiusDesktop.value;
+        if(currentMode==='location'&&userLoc) searchNearMe();
+    });
+
+    async function detectCountry(lat, lng) {
+        try {
+            const res = await fetch('https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=' + lat + '&longitude=' + lng + '&localityLanguage=en');
+            const data = await res.json();
+            return data.countryCode || null;
+        } catch (e) { return null; }
+    }
+
+    function showEmergencyNumbers(countryCode) {
+        const info = EMERGENCY_NUMBERS[countryCode.toUpperCase()];
+        if (!info) {
+            emergencyPanelDesktop.classList.remove('visible');
+            emergencyPanelMobile.classList.remove('visible');
+            return;
+        }
+        emergencyPanelDesktop.classList.add('visible');
+        emergencyGridDesktop.innerHTML = 
+            '<div class="emergency-item"><a href="tel:' + info.police + '"><span class="num">' + info.police + '</span><span class="label">Police</span></a></div>' +
+            '<div class="emergency-item"><a href="tel:' + info.ambulance + '"><span class="num">' + info.ambulance + '</span><span class="label">Ambulance</span></a></div>' +
+            '<div class="emergency-item"><a href="tel:' + info.fire + '"><span class="num">' + info.fire + '</span><span class="label">Fire</span></a></div>';
+        emergencyPanelMobile.classList.add('visible');
+        emergencySliderMobile.innerHTML = 
+            '<div class="mobile-emergency-slide"><a href="tel:' + info.police + '"><span class="num">' + info.police + '</span><span class="label">Police</span></a></div>' +
+            '<div class="mobile-emergency-slide"><a href="tel:' + info.ambulance + '"><span class="num">' + info.ambulance + '</span><span class="label">Ambulance</span></a></div>' +
+            '<div class="mobile-emergency-slide"><a href="tel:' + info.fire + '"><span class="num">' + info.fire + '</span><span class="label">Fire</span></a></div>' +
+            '<div class="mobile-emergency-slide"><a href="tel:' + info.emergency + '"><span class="num">' + info.emergency + '</span><span class="label">Emergency</span></a></div>';
+    }
+
+    // Hours parser
+    const DAY_NAMES = ['su','mo','tu','we','th','fr','sa'];
+    function dayIndex(n){return DAY_NAMES.indexOf(n);}
+    function ruleAppliesToDay(rule, cd) {
+        if (!/(mo|tu|we|th|fr|sa|su)/.test(rule)) return true;
+        const re = /(mo|tu|we|th|fr|sa|su)(?:-(mo|tu|we|th|fr|sa|su))?/g; let m;
+        while ((m = re.exec(rule)) !== null) {
+            const s = dayIndex(m[1]), e = m[2] ? dayIndex(m[2]) : s;
+            if (s===-1||e===-1) continue;
+            if (s<=e){if(cd>=s&&cd<=e)return true;}else{if(cd>=s||cd<=e)return true;}
+        } return false;
+    }
+    function extractTimeRanges(rule) {
+        const r=[], re=/(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/g; let m;
+        while((m=re.exec(rule))!==null){const s=parseInt(m[1])*60+parseInt(m[2]),e=parseInt(m[3])*60+parseInt(m[4]);if(!isNaN(s)&&!isNaN(e))r.push([s,e]);}
+        return r;
+    }
+    function checkOpen(hoursStr) {
+        if (!hoursStr) return null;
+        const raw = hoursStr.trim(); if (raw === '24/7') return true;
+        const now = new Date(), cd = now.getDay(), ct = now.getHours()*60+now.getMinutes();
+        const rules = raw.split(/;\s*/); let hasToday = false;
+        for (let rule of rules) {
+            rule = rule.trim().toLowerCase().replace(/\s+/g,' '); if(!rule)continue;
+            if (!ruleAppliesToDay(rule, cd)) continue; hasToday = true;
+            if (/\b(off|closed)\b/.test(rule)) return false;
+            for (let [s,e] of extractTimeRanges(rule)) if (ct>=s && ct<=e) return true;
+        }
+        if (hasToday) return false; return null;
+    }
+
+    function createCardHTML(p, i, centerPoint) {
+        const cls = p.isOpen===true?'open':p.isOpen===false?'closed':'unknown';
+        const txt = p.isOpen===true?'Open':p.isOpen===false?'Closed':'Unknown';
+        let distText=''; if(centerPoint){const d=getDist(centerPoint.lat,centerPoint.lng,p.lat,p.lon);distText='<p class="distance">' + d.toFixed(2) + ' km away</p>';}
+        return '<div class="card-header"><h4>' + (i+1) + '. ' + p.name + '</h4><span class="status-tag ' + cls + '">' + txt + '</span></div><div class="card-body">' + distText + '<p>' + p.address + '</p>' + (p.phone?'<p>' + p.phone + '</p>':'') + (p.hours?'<p class="hours">' + p.hours + '</p>':'') + '</div>';
+    }
+
+    function displayPharmacies(list, centerPoint) {
+        const openOnly = window.innerWidth <= 768 ? openOnlyMobile.checked : openOnlyDesktop.checked;
+        const show = openOnly ? list.filter(p => p.isOpen === true) : list;
+
+        if (show.length === 0) {
+            setStatus('Found ' + list.length + ' pharmacies, none open now.', 'error');
+            const emptyHTML = '<div class="empty-state"><p>No open pharmacies. Disable "Open now only" to see all.</p></div>';
+            resultsDesktop.innerHTML = emptyHTML;
+            mobileListScroll.innerHTML = emptyHTML;
+            mobileListCount.textContent = '0 found';
+            updateListBadge(0);
+            return;
+        }
+
+        resultsDesktop.innerHTML = '';
+        mobileListScroll.innerHTML = '';
+
+        show.forEach((p, i) => {
+            const cls = p.isOpen===true?'open':p.isOpen===false?'closed':'unknown';
+            const txt = p.isOpen===true?'Open':p.isOpen===false?'Closed':'Unknown';
+            const col = p.isOpen===true?'#16a34a':p.isOpen===false?'#dc2626':'#d97706';
+
+            const icon = L.divIcon({
+                html: '<div style="background:' + col + ';width:26px;height:26px;border-radius:50%;border:2.5px solid white;box-shadow:0 2px 5px rgba(0,0,0,0.2);display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:11px;font-family:Inter,sans-serif;">' + (i+1) + '</div>',
+                iconSize:[26,26], iconAnchor:[13,13]
+            });
+            const m = L.marker([p.lat,p.lon],{icon}).addTo(map);
+            m.bindPopup('<b style=\'font-family:Inter,sans-serif;font-size:0.95rem\'>' + p.name + '</b><br><span style=\'color:' + col + ';font-weight:600;font-size:0.85rem\'>' + txt + '</span><br><span style=\'color:#6b7280;font-size:0.8rem\'>' + p.address + '</span>' + (p.phone?'<br><span style=\'color:#0d9488;font-size:0.8rem\'>' + p.phone + '</span>':'') + (p.hours?'<br><span style=\'color:#9ca3af;font-size:0.75rem;font-family:monospace\'>' + p.hours + '</span>':''));
+            markers.push(m);
+
+            const dCard = document.createElement('div');
+            dCard.className = 'pharmacy-card ' + cls;
+            dCard.innerHTML = createCardHTML(p, i, centerPoint);
+            dCard.onclick = () => { map.setView([p.lat,p.lon],17); m.openPopup(); };
+
+            const navBtnD = document.createElement('button');
+            navBtnD.className = 'card-nav-btn';
+            navBtnD.innerHTML = '&#x1F9EA; Navigate Here';
+            navBtnD.onclick = (e) => { e.stopPropagation(); NavigationTracker.start(p); };
+            dCard.appendChild(navBtnD);
+
+            resultsDesktop.appendChild(dCard);
+
+            const mCard = document.createElement('div');
+            mCard.className = 'pharmacy-card ' + cls;
+            mCard.innerHTML = createCardHTML(p, i, centerPoint);
+            mCard.onclick = () => {
+                map.setView([p.lat,p.lon],17); m.openPopup();
+                if(window.innerWidth<=768) setMobileView('map');
+            };
+
+            const navBtnM = document.createElement('button');
+            navBtnM.className = 'card-nav-btn';
+            navBtnM.innerHTML = '&#x1F9EA; Navigate Here';
+            navBtnM.onclick = (e) => { e.stopPropagation(); NavigationTracker.start(p); };
+            mCard.appendChild(navBtnM);
+
+            mobileListScroll.appendChild(mCard);
+        });
+
+        setStatus(show.length + ' pharmacy' + (show.length!==1?'ies':'y') + ' found', 'success');
+        mobileListCount.textContent = show.length + ' found';
+        updateListBadge(show.length);
+        if (markers.length>0) map.fitBounds(L.featureGroup(markers).getBounds().pad(0.1));
+    }
+
+    function processElements(elements, centerPoint) {
+        const list=[];
+        elements.forEach(el=>{
+            let lat,lon,tags=el.tags||{};
+            if(el.type==='node'){lat=el.lat;lon=el.lon;}else if(el.center){lat=el.center.lat;lon=el.center.lon;}else return;
+            const isOpen=checkOpen(tags.opening_hours);
+            const addr=[tags['addr:street'],tags['addr:housenumber'],tags['addr:postcode'],tags['addr:city']].filter(Boolean).join(' ')||'Address not available';
+            list.push({name:tags.name||tags['name:en']||'Unnamed Pharmacy',lat,lon,address:addr,phone:tags.phone||tags['contact:phone']||null,hours:tags.opening_hours||null,isOpen,dist:centerPoint?getDist(centerPoint.lat,centerPoint.lng,lat,lon):0});
+        });
+        list.sort((a,b)=>a.dist-b.dist); return list;
+    }
+
+    async function fetchOverpass(query, timeoutMs=25000) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            const res = await fetch('https://overpass-api.de/api/interpreter', {
+                method: 'POST', body: query,
+                headers: {'Content-Type':'application/x-www-form-urlencoded'},
+                signal: controller.signal
+            });
+            clearTimeout(timer);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return await res.json();
+        } catch (e) { clearTimeout(timer); throw e; }
+    }
+
+    async function searchNearMe() {
+        if(!userLoc)return;
+        const radius = window.innerWidth <= 768 ? parseInt(radiusMobile.value) : parseInt(radiusDesktop.value);
+        setStatus('Searching nearby...','loading');
+        btnDesktop.disabled=true; showAllBtnDesktop.disabled=true;
+        fabLocate.disabled=true; fabShowAll.disabled=true;
+        let cc = null;
+        try { cc = await detectCountry(userLoc.lat, userLoc.lng); } catch(e) {}
+        if (cc) showEmergencyNumbers(cc);
+        const query='[out:json][timeout:25];(nwr["amenity"="pharmacy"](around:' + radius + ',' + userLoc.lat + ',' + userLoc.lng + '););out center tags;';
+        try {
+            const data = await fetchOverpass(query, 30000);
+            if(!data.elements||data.elements.length===0){
+                setStatus('No pharmacies found. Try a larger radius.','error');
+                const emptyHTML = '<div class="empty-state"><p>No pharmacies found in this area.</p></div>';
+                resultsDesktop.innerHTML = emptyHTML;
+                mobileListScroll.innerHTML = emptyHTML;
+                mobileListCount.textContent = '0 found';
+                clearMarkers(); updateListBadge(0); return;
+            }
+            clearMarkers(); const list=processElements(data.elements,userLoc); displayPharmacies(list,userLoc);
+        } catch(err) {
+            console.error(err);
+            setStatus(err.name==='AbortError'?'Search timed out. Try a smaller radius.':'Error loading data. Please try again.','error');
+        }
+        btnDesktop.disabled=false; showAllBtnDesktop.disabled=false;
+        fabLocate.disabled=false; fabShowAll.disabled=false;
+    }
+
+    async function showAllInView() {
+        const bounds=map.getBounds(), sw=bounds.getSouthWest(), ne=bounds.getNorthEast();
+        const area=Math.abs(ne.lat-sw.lat)*Math.abs(ne.lng-sw.lng);
+        if(area>5){setStatus('Area too large. Zoom in closer.','error');return;}
+        setStatus('Loading pharmacies in view...','loading');
+        btnDesktop.disabled=true; showAllBtnDesktop.disabled=true;
+        fabLocate.disabled=true; fabShowAll.disabled=true;
+        let cc = null;
+        try { cc = await detectCountry((sw.lat+ne.lat)/2, (sw.lng+ne.lng)/2); } catch(e) {}
+        if (cc) showEmergencyNumbers(cc);
+        const query='[out:json][timeout:30];(nwr["amenity"="pharmacy"](' + sw.lat + ',' + sw.lng + ',' + ne.lat + ',' + ne.lng + '););out center tags;';
+        try {
+            const data = await fetchOverpass(query, 35000);
+            if(!data.elements||data.elements.length===0){
+                setStatus('No pharmacies in this area.','error');
+                const emptyHTML = '<div class="empty-state"><p>No pharmacies visible. Try panning to a city.</p></div>';
+                resultsDesktop.innerHTML = emptyHTML;
+                mobileListScroll.innerHTML = emptyHTML;
+                mobileListCount.textContent = '0 found';
+                clearMarkers(); updateListBadge(0); return;
+            }
+            clearMarkers(); const list=processElements(data.elements,null); list.sort((a,b)=>a.name.localeCompare(b.name)); displayPharmacies(list,null);
+        } catch(err) {
+            console.error(err);
+            setStatus(err.name==='AbortError'?'Search timed out. Zoom in and try again.':'Error loading data. Please try again.','error');
+        }
+        btnDesktop.disabled=false; showAllBtnDesktop.disabled=false;
+        fabLocate.disabled=false; fabShowAll.disabled=false;
+    }
+
+    function startSearch() {
+        if(!navigator.geolocation){setStatus('Geolocation not supported.','error');return;}
+        currentMode='location'; modeIndicatorDesktop.textContent='Search near my location';
+        setStatus('Getting your location...','loading');
+        btnDesktop.disabled=true; showAllBtnDesktop.disabled=true;
+        fabLocate.disabled=true; fabShowAll.disabled=true;
+        navigator.geolocation.getCurrentPosition(pos=>{
+            userLoc={lat:pos.coords.latitude,lng:pos.coords.longitude}; map.setView([userLoc.lat,userLoc.lng],14);
+            L.circleMarker([userLoc.lat,userLoc.lng],{radius:9,fillColor:'#0d9488',color:'white',weight:2.5,fillOpacity:1}).addTo(map).bindPopup('You are here').openPopup();
+            searchNearMe();
+        },err=>{setStatus('Location denied. Enable location permissions.','error');btnDesktop.disabled=false;showAllBtnDesktop.disabled=false;fabLocate.disabled=false;fabShowAll.disabled=false;},{enableHighAccuracy:true,timeout:15000});
+    }
+
+    btnDesktop.addEventListener('click', startSearch);
+    fabLocate.addEventListener('click', startSearch);
+    showAllBtnDesktop.addEventListener('click',()=>{currentMode='viewport';modeIndicatorDesktop.textContent='Show all in map view';showAllInView();});
+    fabShowAll.addEventListener('click',()=>{currentMode='viewport';modeIndicatorDesktop.textContent='Show all in map view';showAllInView();});
+</script>
+</body>
+</html>
